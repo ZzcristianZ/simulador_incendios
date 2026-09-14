@@ -71,6 +71,7 @@ if ejecutar:
             for msj in alertas_clima:
                 st.write(msj)
 
+
         # Cálculo de riesgo determinista
         riesgo_dinamico = (clima['temperatura'] / 25.0) * (clima['viento_velocidad'] / 3.0) * (clima['vpd'] / 1.5)
         riesgo_dinamico = max(1.0, min(riesgo_dinamico, 30.0))
