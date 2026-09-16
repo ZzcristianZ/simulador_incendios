@@ -1,3 +1,4 @@
+import numpy as np
 import requests
 from geopy.geocoders import Nominatim
 
@@ -78,4 +79,90 @@ def obtener_clima_tiempo_real(lat: float, lon: float) -> dict:
     return clima
 
 
+def obtener_pronostico_horario(lat: float, lon: float, horas: int = 24) -> list:
+    """
+    Consulta el pronóstico horario de Open-Meteo (en vez de una sola foto
+    del clima 'actual'). Devuelve una lista de diccionarios de clima (uno
+    por hora, mismas claves/unidades que obtener_clima_tiempo_real), para
+    que la simulación pueda usar condiciones que cambian en el tiempo en
+    vez de un único valor estático repetido en todos los pasos.
+    """
+    url = "https://api.open-meteo.com/v1/forecast"
 
+    parametros = {
+        "latitude": lat,
+        "longitude": lon,
+        "forecast_hours": horas,
+        "hourly": [
+            "temperature_2m",
+            "relative_humidity_2m",
+            "vapour_pressure_deficit",
+            "wind_speed_10m",
+            "wind_gusts_10m",
+            "wind_direction_10m",
+            "precipitation",
+            "shortwave_radiation",
+            "soil_moisture_0_to_7cm",
+        ],
+    }
+
+    respuesta = requests.get(url, params=parametros, timeout=10)
+    respuesta.raise_for_status()
+    datos = respuesta.json()["hourly"]
+
+    n = len(datos["temperature_2m"])
+    serie = []
+    for i in range(n):
+        serie.append({
+            "temperatura": datos["temperature_2m"][i],
+            "humedad_relativa": datos["relative_humidity_2m"][i],
+            "vpd": datos["vapour_pressure_deficit"][i],
+            "viento_velocidad": (datos["wind_speed_10m"][i] or 0) / 3.6,
+            "viento_rafagas": (datos["wind_gusts_10m"][i] or 0) / 3.6,
+            "viento_direccion": datos["wind_direction_10m"][i],
+            "precipitacion": datos["precipitation"][i],
+            "radiacion_solar": datos["shortwave_radiation"][i],
+            "humedad_suelo": datos["soil_moisture_0_to_7cm"][i],
+        })
+    return serie
+
+
+def obtener_elevacion_grid(lat_centro: float, lon_centro: float, radio_m: float,
+                            resolucion: int = 11) -> np.ndarray:
+    """
+    Obtiene un modelo de elevación de baja resolución (resolucion x
+    resolucion puntos) cubriendo un cuadrado de lado 2*radio_m alrededor
+    de (lat_centro, lon_centro), usando la API de elevación de Open-Meteo
+    en una sola consulta por lotes.
+
+    Se usa una malla gruesa (por defecto 11x11 = 121 puntos) para no
+    disparar cientos de puntos por request; luego se interpola a la
+    resolución fina de la grilla de simulación (ver simulador_automata).
+
+    Devuelve un array 2D de elevaciones en metros, o None si la consulta
+    falla (en ese caso, la simulación simplemente ignora la pendiente).
+    """
+    grados_lat_por_m = 1.0 / 111_320.0
+    grados_lon_por_m = 1.0 / (111_320.0 * np.cos(np.radians(lat_centro)))
+
+    offsets = np.linspace(-radio_m, radio_m, resolucion)
+    lats = lat_centro + offsets[:, None] * grados_lat_por_m * np.ones((1, resolucion))
+    lons = lon_centro + offsets[None, :] * grados_lon_por_m * np.ones((resolucion, 1))
+
+    lats_flat = lats.ravel()
+    lons_flat = lons.ravel()
+
+    url = "https://api.open-meteo.com/v1/elevation"
+    parametros = {
+        "latitude": ",".join(f"{v:.6f}" for v in lats_flat),
+        "longitude": ",".join(f"{v:.6f}" for v in lons_flat),
+    }
+
+    try:
+        respuesta = requests.get(url, params=parametros, timeout=15)
+        respuesta.raise_for_status()
+        elevaciones = respuesta.json()["elevation"]
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+    return np.array(elevaciones, dtype=float).reshape(resolucion, resolucion)
