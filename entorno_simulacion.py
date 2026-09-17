@@ -26,7 +26,7 @@ from ingesta_geografica import (
 
 
 def ajustar_elevacion_a_grilla(elevacion_gruesa: np.ndarray, filas: int, columnas: int) -> np.ndarray:
-    """Interpola bilinealmente una malla de elevación gruesa (ej. 11x11)
+    """Interpola bilinealmente una malla de elevación gruesa (ej. 10x10)
     a la resolución fina de la grilla de simulación (filas x columnas)."""
     factor_f = filas / elevacion_gruesa.shape[0]
     factor_c = columnas / elevacion_gruesa.shape[1]
@@ -50,11 +50,11 @@ def preparar_terreno(lat: float, lon: float, radio_m: float, tam_celda_m: float,
     geografia_real = True
     try:
         datos_geo = obtener_datos_geograficos(lat, lon, radio_m)
-        grid, celda_casa = rasterizar_geografia(datos_geo, lat, lon, filas, columnas, tam_celda_m)
+        grid, celda_origen = rasterizar_geografia(datos_geo, lat, lon, filas, columnas, tam_celda_m)
     except GeografiaNoDisponibleError:
         geografia_real = False
         datos_geo = None
-        grid, celda_casa = generar_terreno_sintetico(filas, columnas)
+        grid, celda_origen = generar_terreno_sintetico(filas, columnas)
 
     elevacion_fina = None
     if incluir_pendiente:
@@ -66,7 +66,7 @@ def preparar_terreno(lat: float, lon: float, radio_m: float, tam_celda_m: float,
         "filas": filas,
         "columnas": columnas,
         "grid": grid,
-        "celda_casa": celda_casa,
+        "celda_origen": celda_origen,
         "elevacion": elevacion_fina,
         "datos_geo": datos_geo,
         "geografia_real": geografia_real,
@@ -116,3 +116,20 @@ def clima_en_paso(serie_climatica: list, paso: int, minutos_por_paso: int = 15) 
     (paso 1-indexado, cada paso dura `minutos_por_paso` minutos)."""
     idx = min(len(serie_climatica) - 1, ((paso - 1) * minutos_por_paso) // 60)
     return serie_climatica[idx]
+
+
+def construir_clima_manual(valores: dict):
+    """
+    Construye una serie climática a partir de valores fijados a mano por
+    el usuario (modo "condiciones controladas"), con la misma forma que
+    devuelve `preparar_serie_climatica` para que el resto del pipeline
+    (`clima_en_paso`, `SimuladorIncendio.simular_paso`) no necesite saber
+    de dónde vino el clima.
+
+    A diferencia del modo en vivo, aquí no hay "pronóstico": es un único
+    escenario constante que se repite en todos los pasos de la corrida
+    (útil para aislar el efecto de una variable en un análisis de
+    sensibilidad).
+    """
+    clima_ok, alertas = validar_y_sanitizar_clima(valores)
+    return [clima_ok], alertas, False

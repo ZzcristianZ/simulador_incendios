@@ -128,15 +128,18 @@ def obtener_pronostico_horario(lat: float, lon: float, horas: int = 24) -> list:
 
 
 def obtener_elevacion_grid(lat_centro: float, lon_centro: float, radio_m: float,
-                            resolucion: int = 11) -> np.ndarray:
+                            resolucion: int = 10) -> np.ndarray:
     """
     Obtiene un modelo de elevación de baja resolución (resolucion x
     resolucion puntos) cubriendo un cuadrado de lado 2*radio_m alrededor
     de (lat_centro, lon_centro), usando la API de elevación de Open-Meteo
     en una sola consulta por lotes.
 
-    Se usa una malla gruesa (por defecto 11x11 = 121 puntos) para no
-    disparar cientos de puntos por request; luego se interpola a la
+    Se usa una malla gruesa (por defecto 10x10 = 100 puntos: el límite
+    real de la API de elevación de Open-Meteo es 100 coordenadas por
+    consulta, así que 11x11 = 121 puntos -usado antes- fallaba con 400
+    en el 100% de los casos) para no disparar cientos de puntos por
+    request; luego se interpola a la
     resolución fina de la grilla de simulación (ver simulador_automata).
 
     Devuelve un array 2D de elevaciones en metros, o None si la consulta

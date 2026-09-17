@@ -23,7 +23,24 @@ from simulador_automata import (
     ESTADO_VEGETACION_DENSA,
 )
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# overpass-api.de (la instancia "oficial" pública) se satura seguido y
+# responde 502/504 en horas pico -- probado en vivo, falla varias veces
+# por hora. Como es un servicio público y gratuito, la mitigación es
+# tener varios espejos (mismos datos de OSM, infraestructura distinta) y
+# probarlos en orden hasta que uno responda con JSON válido.
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
+
+# Overpass rechaza con 406 Not Acceptable las peticiones que llegan con
+# el User-Agent genérico por defecto de `requests` (lo confirmado
+# probando en vivo: mismo request, sin header falla, con header responde
+# 200). Un User-Agent descriptivo es además la práctica esperada por la
+# política de uso de Overpass/OSM.
+_HEADERS = {"User-Agent": "simulador-incendios-forestales/1.0 (proyecto academico)"}
 
 
 class GeografiaNoDisponibleError(Exception):
@@ -49,7 +66,7 @@ def obtener_datos_geograficos(lat: float, lon: float, radio_m: float = 300.0) ->
     Lanza GeografiaNoDisponibleError si la consulta falla.
     """
     consulta = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:15];
     (
       way["building"](around:{radio_m},{lat},{lon});
       way["natural"="water"](around:{radio_m},{lat},{lon});
@@ -61,12 +78,32 @@ def obtener_datos_geograficos(lat: float, lon: float, radio_m: float = 300.0) ->
     out geom;
     """
 
-    try:
-        respuesta = requests.post(OVERPASS_URL, data={"data": consulta}, timeout=30)
-        respuesta.raise_for_status()
-        datos = respuesta.json()
-    except (requests.RequestException, ValueError) as error:
-        raise GeografiaNoDisponibleError(str(error)) from error
+    # Timeout corto por espejo: si uno está caído/saturado, es mejor
+    # pasar rápido al siguiente que dejar al usuario esperando -- con 4
+    # espejos, el peor caso ya es varios segundos, no queremos que sea
+    # varios minutos.
+    datos = None
+    errores = []
+    for url in OVERPASS_URLS:
+        try:
+            respuesta = requests.post(url, data={"data": consulta}, headers=_HEADERS, timeout=15)
+            respuesta.raise_for_status()
+            candidato = respuesta.json()
+        except (requests.RequestException, ValueError) as error:
+            errores.append(f"{url}: {error}")
+            continue
+
+        # Overpass a veces responde 200 con una página HTML de error
+        # (p.ej. "duplicate_query") en vez de JSON real; sin 'elements'
+        # el .json() puede igual tener éxito sobre un cuerpo inesperado,
+        # así que se valida la forma antes de aceptar la respuesta.
+        if isinstance(candidato, dict) and "elements" in candidato:
+            datos = candidato
+            break
+        errores.append(f"{url}: respuesta sin 'elements'")
+
+    if datos is None:
+        raise GeografiaNoDisponibleError("; ".join(errores) or "Sin espejos de Overpass disponibles")
 
     resultado = {"edificios": [], "agua": [], "bosque": [], "vias": []}
 
@@ -108,8 +145,8 @@ def rasterizar_geografia(datos_geo: dict, lat_centro: float, lon_centro: float,
     Convierte los polígonos reales (en lat/lon) al sistema de coordenadas
     local de la grilla (fila, columna) y produce:
       - grid: matriz de estados iniciales (numpy int array)
-      - celda_casa: (fila, col) de la celda central = coordenada exacta
-        que ingresó el usuario (su casa / punto de interés).
+      - celda_origen: (fila, col) de la celda central = coordenada exacta
+        que ingresó el usuario, donde se asume que inicia el incendio.
     """
     grados_lat_por_m, grados_lon_por_m = _metros_a_grados(lat_centro)
 
@@ -151,9 +188,9 @@ def rasterizar_geografia(datos_geo: dict, lat_centro: float, lon_centro: float,
         _rasterizar_poligono(mascara_edificios, puntos, filas, columnas)
     grid[mascara_edificios] = ESTADO_URBANO
 
-    celda_casa = (filas // 2, columnas // 2)
+    celda_origen = (filas // 2, columnas // 2)
 
-    return grid, celda_casa
+    return grid, celda_origen
 
 
 def generar_terreno_sintetico(filas: int, columnas: int):
@@ -168,5 +205,5 @@ def generar_terreno_sintetico(filas: int, columnas: int):
     bloque_f = slice(int(filas * 0.6), int(filas * 0.9))
     bloque_c = slice(int(columnas * 0.7), int(columnas * 0.9))
     grid[bloque_f, bloque_c] = ESTADO_URBANO
-    celda_casa = (filas // 2, columnas // 2)
-    return grid, celda_casa
+    celda_origen = (filas // 2, columnas // 2)
+    return grid, celda_origen

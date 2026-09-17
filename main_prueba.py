@@ -1,7 +1,7 @@
 """
 Demo por consola (sin interfaz gráfica) del simulador completo:
-geografía real (OpenStreetMap), elevación real, clima horario evolutivo
-y seguimiento explícito de qué pasa con "tu casa".
+geografía real (OpenStreetMap), elevación real y clima horario evolutivo.
+El incendio inicia justo en la coordenada de UBICACION.
 
 Requiere conexión a internet (Nominatim, Overpass y Open-Meteo).
 Ajusta UBICACION por la dirección o lugar que quieras evaluar.
@@ -39,10 +39,9 @@ sim = SimuladorIncendio(
     filas=entorno["filas"], columnas=entorno["columnas"], tam_celda_m=TAM_CELDA_M,
     grid_inicial=entorno["grid"], elevacion=entorno["elevacion"],
 )
-fila_casa, col_casa = entorno["celda_casa"]
-sim.definir_casa(fila_casa, col_casa)
+fila_origen, col_origen = entorno["celda_origen"]
 grid_inicial = sim.grid.copy()
-sim.iniciar_incendio(fila_casa, col_casa)
+sim.iniciar_incendio(fila_origen, col_origen)
 
 metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=15)
 
@@ -51,13 +50,11 @@ for paso in range(1, PASOS + 1):
     clima_paso = clima_en_paso(serie_clima, paso)
     sim.simular_paso(clima_paso, multiplicador_riesgo=FACTOR_ESCENARIO)
     reporte = metricas.generar_reporte(grid_inicial, sim.grid, paso)
-    estado_casa = sim.estado_casa()
 
     print(f"\n[Paso {paso} - {reporte['tiempo_minutos']} min]")
     print(f" - Área afectada: {reporte['area_m2']} m² ({reporte['area_hectareas']} ha)")
     print(f" - Focos activos en llamas: {reporte['celdas_activas']}")
     print(f" - Edificios afectados: {reporte['edificios_afectados']} / {reporte['edificios_totales']}")
     print(f" - Velocidad de avance estimada: {reporte['velocidad_m_min']} m/min")
-    print(f" - Estado de tu casa: {estado_casa}")
 
 print("\n--- FIN DE LA SIMULACIÓN ---")

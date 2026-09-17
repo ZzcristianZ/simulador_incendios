@@ -63,22 +63,3 @@ class CalculadorMetricas:
             "porcentaje_urbano_afectado": round(porcentaje_urbano_afectado, 2),
             "velocidad_m_min": round(velocidad_avance, 2),
         }
-
-    def tiempo_estimado_a_casa(self, grid_actual, celda_casa, velocidad_m_min: float):
-        """
-        Si la casa aún no está en llamas, estima cuántos minutos faltan
-        para que el frente de fuego más cercano la alcance, usando la
-        distancia euclidiana (en metros) al foco activo más cercano y la
-        velocidad media de avance observada hasta ahora.
-
-        Devuelve None si no hay velocidad de avance para estimar (aún no
-        hay suficiente propagación) o si no hay fuego activo.
-        """
-        mascara_fuego = grid_actual == ESTADO_FUEGO
-        if not np.any(mascara_fuego) or velocidad_m_min <= 0:
-            return None
-
-        distancias_celdas = ndimage.distance_transform_edt(~mascara_fuego)
-        distancia_m = distancias_celdas[celda_casa] * self.tam_celda_m
-        minutos = distancia_m / velocidad_m_min
-        return round(float(minutos), 1)
