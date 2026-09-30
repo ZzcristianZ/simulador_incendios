@@ -3,9 +3,9 @@ Velocidad de propagación superficial del fuego (Rothermel 1972) + forma
 elíptica del incendio por efecto del viento (Anderson 1983).
 
 Responsabilidad ÚNICA de este módulo: dado un tipo de combustible (modelo
-de combustible estándar), el clima del paso y la pendiente local por
-dirección, calcular la velocidad de propagación REAL (m/min) del frente de
-fuego en cada una de las 8 direcciones de la vecindad de Moore.
+de combustible estándar), el clima del paso y la pendiente de cada celda,
+calcular la elipse de propagación del frente de fuego: velocidades de
+cabeza y de retroceso (m/min), forma (LWR) y dirección.
 
 Reemplaza la fórmula multiplicativa ad-hoc que tenía el proyecto (ver
 `modelo_probabilidad.py`, que ahora solo calcula el índice Fosberg
@@ -43,10 +43,8 @@ Simplificaciones deliberadas (documentadas también en el README):
 - La humedad de los combustibles vivos (solo aplica al modelo de bosque,
   que tiene una fracción de leña viva) no tiene fuente climática en tiempo
   real; se usa una constante estacional típica documentada abajo.
-- Viento y pendiente se combinan de forma aditiva, como en la fórmula
-  original de Rothermel (1 + phi_viento + phi_pendiente), en vez de
-  combinar vectorialmente dos elipses (viento y pendiente) como hace
-  FARSITE -- ese nivel de detalle queda como extensión futura.
+- Viento y pendiente se combinan como vectores en una sola elipse por
+  celda (Finney 1998, como FARSITE); ver `elipse_efectiva`.
 - Lo urbano NO es un modelo de Rothermel (que es solo para combustible
   silvestre): se mantiene como una heurística de exposición estructural
   claramente separada.
@@ -342,89 +340,3 @@ def elipse_efectiva(base: _ResultadoBase, viento_hacia_deg: float,
     r_cabeza = base.r0_m_min * (1.0 + phi_e)
     r_cola = r_cabeza * (1.0 - excentricidad) / (1.0 + excentricidad)
     return r_cabeza, r_cola, lwr, azimut_cabeza
-
-
-def velocidad_direccional(
-    base: _ResultadoBase,
-    lwr: float,
-    viento_direccion_deg: float,
-    pendiente_fraccion: np.ndarray,
-    angulo_direccion_deg: float,
-) -> np.ndarray:
-    """
-    Velocidad de propagación (m/min) hacia una dirección dada, para toda
-    la grilla (pendiente_fraccion es un array filas x columnas con la
-    pendiente -- tan(theta) -- en esa dirección para cada celda).
-
-    `base` (de `velocidad_base`) y `lwr` (de `razon_largo_ancho`) se
-    calculan UNA vez por paso por modelo de combustible (no dependen de
-    la dirección ni de la celda) y se reusan para las 8 direcciones, para
-    no repetir el cálculo escalar de Rothermel ocho veces por nada.
-
-    Combina, como en la fórmula original de Rothermel R = R0*xi*(1+phi_w+phi_s):
-      - phi_w efectivo: se redistribuye angularmente con la elipse de
-        Anderson (1983) en vez de aplicarse solo en la dirección del
-        viento, de forma autoconsistente con R_cabeza y R_reverso
-        (R_reverso = R_cabeza*(1-e)/(1+e), relación estándar en literatura).
-      - phi_s: coeficiente de pendiente de Rothermel, evaluado con la
-        pendiente real de esta dirección (no depende del viento).
-    """
-    if base.r0_m_min <= 0.0:
-        return np.zeros_like(pendiente_fraccion)
-
-    excentricidad = np.sqrt(max(1.0 - 1.0 / (lwr ** 2), 0.0))
-    theta = np.radians(viento_direccion_deg - angulo_direccion_deg)
-
-    if excentricidad > 0:
-        denominador = 1.0 - excentricidad * np.cos(theta)
-        denominador = denominador if denominador > 1e-6 else 1e-6
-        forma_viento = (1.0 + base.phi_viento) * (1.0 - excentricidad) / denominador
-    else:
-        forma_viento = 1.0 + base.phi_viento
-    phi_viento_efectivo = forma_viento - 1.0
-
-    # Coeficiente de pendiente de Rothermel (1972): fs = 5.275 * beta^-0.3 * slope^2.
-    beta = base.beta if base.beta > 0 else 1e-6
-    phi_pendiente = 5.275 * beta ** (-0.3) * np.square(pendiente_fraccion)
-
-    r_direccion = base.r0_m_min * (1.0 + phi_viento_efectivo + phi_pendiente)
-    return np.clip(r_direccion, 0.0, None)
-
-
-def _sav_caracteristico(modelo: ModeloCombustible) -> float:
-    """SAV característico (ponderado por área superficial), igual que en
-    `velocidad_base` pero sin depender del clima -- lo necesita tanto el
-    cálculo de velocidad como el de tiempo de residencia."""
-    cargas, savs = _componentes(modelo)
-    es_muerto = np.array([True, True, True, False, False])
-    con_carga = cargas > 0.0
-
-    a = savs * cargas / _RHO_PARTICULA
-    a_muerto = np.sum(np.where(es_muerto & con_carga, a, 0.0))
-    a_vivo = np.sum(np.where(~es_muerto & con_carga, a, 0.0))
-    a_tot = a_muerto + a_vivo
-    if a_tot <= 0:
-        return 0.0
-
-    f = np.zeros(5)
-    if a_muerto > 0:
-        f[:3] = np.where(con_carga[:3], a[:3] / a_muerto, 0.0)
-    if a_vivo > 0:
-        f[3:] = np.where(con_carga[3:], a[3:] / a_vivo, 0.0)
-
-    f_muerto, f_vivo = a_muerto / a_tot, a_vivo / a_tot
-    sav_muerto = np.sum(f[:3] * savs[:3])
-    sav_vivo = np.sum(f[3:] * savs[3:])
-    return float(f_muerto * sav_muerto + f_vivo * sav_vivo)
-
-
-def pasos_combustion(modelo: ModeloCombustible, minutos_por_paso: int) -> int:
-    """Duración de la combustión activa, en número de pasos, a partir del
-    tiempo de residencia de llama de Anderson (1969) (tr = 384/sigma, con
-    sigma el SAV característico del modelo). Con un piso de 1 paso para
-    que la celda sea visible al menos un frame."""
-    sav_tot = _sav_caracteristico(modelo)
-    if sav_tot <= 0:
-        return 1
-    tr_min = 384.0 / sav_tot
-    return max(1, round(tr_min / minutos_por_paso))
