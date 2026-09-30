@@ -42,7 +42,7 @@ sim = SimuladorIncendio(
 fila_origen, col_origen = entorno["celda_origen"]
 grid_inicial = sim.grid.copy()
 
-metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=15)
+metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=15, origen=(fila_origen, col_origen))
 
 clima_inicial = clima_en_paso(serie_clima, 1)
 if not sim.puede_arder(fila_origen, col_origen, clima_inicial):

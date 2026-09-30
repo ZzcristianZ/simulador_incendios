@@ -5,10 +5,14 @@ from simulador_automata import ESTADO_QUEMADO, ESTADO_FUEGO, ESTADO_URBANO
 
 
 class CalculadorMetricas:
-    def __init__(self, tam_celda_m: int = 10, minutos_por_paso: int = 15):
+    def __init__(self, tam_celda_m: int = 10, minutos_por_paso: int = 15, origen=None):
+        """origen: (fila, col) del punto de ignición, para medir la
+        velocidad de cabeza. Sin origen se reporta la velocidad radial
+        equivalente (radio del círculo de igual área / tiempo)."""
         self.tam_celda_m = tam_celda_m
         self.area_celda_m2 = tam_celda_m ** 2
         self.minutos_por_paso = minutos_por_paso
+        self.origen = origen
         self._etiquetas_edificios = None
         self._num_edificios_totales = 0
 
@@ -49,9 +53,17 @@ class CalculadorMetricas:
             (urbanas_afectadas_celdas / urbanas_iniciales * 100) if urbanas_iniciales > 0 else 0
         )
 
-        velocidad_avance = (
-            np.sqrt(area_afectada_m2) / tiempo_transcurrido_min if tiempo_transcurrido_min > 0 else 0
-        )
+        # Velocidad de cabeza: distancia del origen a la celda afectada más
+        # lejana, sobre el tiempo transcurrido. (sqrt(área)/tiempo, lo que se
+        # usaba antes, no es una velocidad: en un círculo infla el radio 1.77x.)
+        if tiempo_transcurrido_min <= 0 or celdas_afectadas_total == 0:
+            velocidad_avance = 0.0
+        elif self.origen is not None:
+            filas_af, cols_af = np.nonzero(mascara_afectada)
+            distancia_m = np.hypot(filas_af - self.origen[0], cols_af - self.origen[1]).max() * self.tam_celda_m
+            velocidad_avance = distancia_m / tiempo_transcurrido_min
+        else:
+            velocidad_avance = np.sqrt(area_afectada_m2 / np.pi) / tiempo_transcurrido_min
 
         return {
             "tiempo_minutos": tiempo_transcurrido_min,

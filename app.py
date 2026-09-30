@@ -177,7 +177,8 @@ if ejecutar:
         # el clima de partida para saber si la combustión es siquiera
         # sostenible en ese punto (ver más abajo, `sim.puede_arder`).
 
-        metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=MINUTOS_POR_PASO)
+        metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=MINUTOS_POR_PASO,
+                                      origen=(fila_origen, col_origen))
 
         # Paleta: 0 quemado, 1 veg. ligera, 2 fuego, 3 urbano, 4 agua, 5 sin combustible, 6 veg. densa
         cmap = ListedColormap(['#0E1117', '#1E8449', '#E74C3C', '#7F8C8D', '#2980B9', '#B9770E', '#145A32'])
