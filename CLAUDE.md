@@ -14,8 +14,9 @@ Open-Meteo), sin llaves ni credenciales que gestionar.
 - Instalar dependencias: `pip install -r requirements.txt`
 - Levantar la app: `streamlit run app.py` (puerto 8501; ver `.claude/launch.json`)
 - Demo de consola / smoke test manual: `python main_prueba.py`
-- No hay suite de pruebas automatizada. Lo más cercano a un "test" en este
-  repo es la verificación de sintaxis:
+- Pruebas (stdlib, sin pytest; `-B` evita reescribir los `.pyc` versionados):
+  `python -B -m unittest discover -s tests -t . -v`
+- Verificación rápida de sintaxis:
   `python -m py_compile app.py simulador_automata.py main_prueba.py modelo_rothermel.py modelo_probabilidad.py entorno_simulacion.py ingesta_clima.py ingesta_geografica.py metricas_fuego.py`
 - **Formateador/linter: ninguno instalado.** No hay black/ruff/flake8/autopep8
   en el entorno ni configuración (`pyproject.toml`, `.flake8`, etc.). No lo

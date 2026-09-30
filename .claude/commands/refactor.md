@@ -13,6 +13,5 @@ Si el refactor toca `modelo_rothermel.py` o cualquier constante física ya
 verificada contra una fuente publicada, no cambies el valor ni la fórmula sin
 antes decirme qué fuente respalda el nuevo valor y esperar mi confirmación.
 
-Después de refactorizar, corré la verificación de sintaxis real de este
-proyecto (no hay suite de pruebas automatizada):
-`python -m py_compile <archivos tocados>`.
+Después de refactorizar, corré las pruebas del proyecto:
+`python -B -m unittest discover -s tests -t . -v`.
