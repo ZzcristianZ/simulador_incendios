@@ -16,6 +16,7 @@ Open-Meteo), sin llaves ni credenciales que gestionar.
 - Demo de consola / smoke test manual: `python main_prueba.py`
 - Pruebas (stdlib, sin pytest; `-B` evita reescribir los `.pyc` versionados):
   `python -B -m unittest discover -s tests -t . -v`
+- Laboratorio de sensibilidad (escribe `resultados/`): `python -B experimentos.py`
 - Verificación rápida de sintaxis:
   `python -m py_compile app.py simulador_automata.py main_prueba.py modelo_rothermel.py modelo_probabilidad.py entorno_simulacion.py ingesta_clima.py ingesta_geografica.py metricas_fuego.py`
 - **Formateador/linter: ninguno instalado.** No hay black/ruff/flake8/autopep8

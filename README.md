@@ -194,6 +194,97 @@ Ambos requieren conexión a internet: Nominatim (geocodificación),
 Overpass API (edificios/agua/bosque), y Open-Meteo (clima y
 elevación) — todos servicios públicos y gratuitos, sin llave de API.
 
+## Resultados del laboratorio de sensibilidad
+
+`python -B experimentos.py` varía un parámetro a la vez sobre un terreno
+controlado (200×200 celdas de 10 m, combustible único, clima constante;
+base: 30°C, 35% HR, viento 3 m/s, sin pendiente, bosque) y registra área y
+velocidad de cabeza cada 15 min durante 2 h. Resultados completos paso a
+paso en `resultados/barrido.csv`; curvas en `resultados/barrido_*.png`.
+Tablas siguientes: valor del parámetro → área y velocidad de cabeza a los
+120 min (resto del terreno/clima en su valor base).
+
+**Viento (m/s)**
+
+| viento | área (ha) | velocidad de cabeza (m/min) |
+|---|---|---|
+| 0 | 0.37 | 0.26 |
+| 2 | 0.36 | 0.42 |
+| 4 | 0.75 | 0.83 |
+| 6 | 1.33 | 1.25 |
+
+**Humedad relativa (%)**
+
+| HR | área (ha) | velocidad de cabeza (m/min) |
+|---|---|---|
+| 20 | 0.70 | 0.75 |
+| 35 | 0.52 | 0.59 |
+| 50 | 0.45 | 0.58 |
+| 65 | 0.42 | 0.51 |
+
+**Temperatura (°C)**
+
+| temperatura | área (ha) | velocidad de cabeza (m/min) |
+|---|---|---|
+| 20 | 0.52 | 0.59 |
+| 25 | 0.52 | 0.59 |
+| 30 | 0.52 | 0.59 |
+| 35 | 0.53 | 0.67 |
+
+**Humedad del combustible vivo (%)**
+
+| humedad viva | área (ha) | velocidad de cabeza (m/min) |
+|---|---|---|
+| 60 | 0.99 | 0.84 |
+| 100 | 0.52 | 0.59 |
+| 140 | 0.36 | 0.50 |
+
+**Pendiente (%)**
+
+| pendiente | área (ha) | velocidad de cabeza (m/min) |
+|---|---|---|
+| 0 | 0.52 | 0.59 |
+| 15 | 0.66 | 0.75 |
+| 30 | 1.01 | 1.00 |
+| 45 | 1.70 | 1.50 |
+
+**Combustible** (viento y pendiente en su valor base)
+
+| combustible | área (ha) | velocidad de cabeza (m/min) | toca_borde |
+|---|---|---|---|
+| bosque | 0.52 | 0.59 | no |
+| pasto | 63.66 | 8.48 | sí (a los 120 min) |
+
+`toca_borde` es `False` en todas las filas salvo la última del barrido de
+pasto (120 min): con este terreno de 2×2 km ningún otro barrido se sale de
+la grilla, así que todas las curvas excepto esa son comparables tal cual.
+
+Puntos de discusión:
+
+- **Efecto relativo:** de mayor a menor impacto en el área a las 2 h
+  (excluyendo el barrido de combustible, no comparable porque el pasto sale
+  de la grilla): viento (0.36→1.33 ha, ×3.7) y pendiente (0.52→1.70 ha,
+  ×3.3) mueven el área más que la humedad del combustible vivo (0.36→0.99
+  ha, ×2.75) y la humedad relativa (0.42→0.70 ha, ×1.7). La temperatura
+  apenas la mueve (0.52→0.53 ha, ×1.02).
+- **La temperatura casi no mueve el fuego:** en Rothermel la temperatura
+  del aire no aparece como variable directa de la velocidad de propagación;
+  solo entra indirectamente vía la humedad de equilibrio del combustible
+  (EMC). Por eso el barrido de temperatura es casi plano (0.52 → 0.53 ha
+  entre 20°C y 35°C) frente a los ×3 y ×4 de viento o pendiente.
+- **Viento suave vs. moderado/fuerte:** de 0 a 2 m/s la velocidad de cabeza
+  sube (0.26 → 0.42 m/min) pero el área a los 120 min no crece (0.37 → 0.36
+  ha): con viento débil la elipse de Anderson se alarga (crece el LWR) más
+  rápido de lo que Rothermel acelera la cabeza, así que el área total no
+  gana lo que pierde de ancho. De 2 a 6 m/s (viento moderado/fuerte) ambos
+  crecen juntos (velocidad 0.42→1.25 m/min, área 0.36→1.33 ha).
+- **Pasto con viento sale de la grilla:** con el clima base (viento 3 m/s)
+  el pasto llega al borde de la grilla de 2×2 km antes de los 120 min
+  (`toca_borde=True` en la última fila); a partir de ahí el área deja de
+  ser comparable. Las comparaciones pasto/bosque de este barrido se leen en
+  los primeros pasos (ver `resultados/barrido_combustible.png`) o
+  requieren una grilla más grande.
+
 ## Limitaciones conocidas (para tu informe)
 
 - El frente usa un esquema de conjuntos de nivel de primer orden: con
