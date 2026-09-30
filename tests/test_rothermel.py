@@ -43,6 +43,52 @@ class InvariantesFisicos(unittest.TestCase):
         self.assertEqual(R.razon_largo_ancho(R.FUEL_MODEL_DENSO, clima(30, 35, 0.0)), 1.0)
 
 
+class ElipseEfectiva(unittest.TestCase):
+    """Viento y pendiente combinados como vectores (Finney 1998)."""
+
+    def setUp(self):
+        self.calma = R.velocidad_base(R.FUEL_MODEL_DENSO, clima(30, 35))
+        self.viento = R.velocidad_base(R.FUEL_MODEL_DENSO, clima(30, 35, 6.0))
+        self.subida = (np.array([0.3]), np.array([90.0]))  # 30 % cuesta arriba hacia el este
+
+    def test_la_cabeza_es_mucho_mas_rapida_que_la_cola(self):
+        cabeza, cola, _, azimut = R.elipse_efectiva(self.viento, 90.0, np.zeros(1), np.zeros(1))
+        self.assertAlmostEqual(cabeza[0], self.viento.r0_m_min * (1 + self.viento.phi_viento), places=6)
+        self.assertGreater(cabeza[0], 5 * cola[0])
+        self.assertAlmostEqual(azimut[0], 90.0)
+
+    def test_sin_pendiente_el_viento_efectivo_reproduce_anderson(self):
+        _, _, lwr, _ = R.elipse_efectiva(self.viento, 90.0, np.zeros(1), np.zeros(1))
+        self.assertAlmostEqual(lwr[0], R.razon_largo_ancho(R.FUEL_MODEL_DENSO, clima(30, 35, 6.0)), places=9)
+
+    def test_cuesta_arriba_acelera(self):
+        cabeza, _, _, azimut = R.elipse_efectiva(self.calma, 0.0, *self.subida)
+        self.assertAlmostEqual(cabeza[0], 0.6764, places=3)
+        self.assertAlmostEqual(azimut[0], 90.0)
+
+    def test_cuesta_abajo_retrocede_mas_lento_que_en_llano(self):
+        _, cola, _, _ = R.elipse_efectiva(self.calma, 0.0, *self.subida)
+        self.assertLess(cola[0], self.calma.r0_m_min)
+
+    def test_viento_y_pendiente_alineados_se_suman(self):
+        phi_s = R.elipse_efectiva(self.calma, 0.0, *self.subida)[0][0] / self.calma.r0_m_min - 1.0
+        cabeza, _, _, _ = R.elipse_efectiva(self.viento, 90.0, *self.subida)
+        self.assertAlmostEqual(cabeza[0], self.viento.r0_m_min * (1 + self.viento.phi_viento + phi_s), places=6)
+
+    def test_viento_y_pendiente_opuestos_se_restan(self):
+        solo_viento, _, _, _ = R.elipse_efectiva(self.viento, 90.0, np.zeros(1), np.zeros(1))
+        opuestos, _, _, azimut = R.elipse_efectiva(self.viento, 90.0, np.array([0.3]), np.array([270.0]))
+        self.assertLess(opuestos[0], solo_viento[0])
+        self.assertAlmostEqual(azimut[0], 90.0)  # domina el viento: phi_w 4.0 > phi_s 1.6
+
+    def test_combustible_que_no_arde_da_velocidad_cero(self):
+        base = R.velocidad_base(R.FUEL_MODEL_LIGERO, clima(20, 75))
+        cabeza, cola, lwr, _ = R.elipse_efectiva(base, 90.0, np.zeros(2), np.zeros(2))
+        np.testing.assert_array_equal(cabeza, 0.0)
+        np.testing.assert_array_equal(cola, 0.0)
+        np.testing.assert_array_equal(lwr, 1.0)
+
+
 class HumedadDeCombustible(unittest.TestCase):
     def setUp(self):
         self.c = clima(30, 35)

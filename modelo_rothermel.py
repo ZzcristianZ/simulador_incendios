@@ -127,6 +127,12 @@ class _ResultadoBase:
     phi_viento: float     # coeficiente de viento de Rothermel (adimensional)
     beta: float           # packing ratio (para el coeficiente de pendiente)
     tiempo_residencia_min: float
+    # phi_viento = c_viento * U^b_viento * rpr^(-e_viento), con U en ft/min a
+    # altura de llama media: se guardan para poder invertirla (viento efectivo).
+    c_viento: float = 0.0
+    b_viento: float = 1.0
+    e_viento: float = 0.0
+    rpr: float = 0.0
 
 
 def _componentes(modelo: ModeloCombustible):
@@ -283,7 +289,15 @@ def velocidad_base(modelo: ModeloCombustible, clima: dict, humedades_muertas=Non
 
     tiempo_residencia_min = 384.0 / sav_tot if sav_tot > 0 else 1.0
 
-    return _ResultadoBase(float(r0_m_min), float(phi_w), float(beta), float(tiempo_residencia_min))
+    return _ResultadoBase(float(r0_m_min), float(phi_w), float(beta), float(tiempo_residencia_min),
+                          float(c), float(b_exp), float(e_exp), float(rpr))
+
+
+def _lwr_anderson(viento_llama_mph):
+    """Razón largo/ancho (LWR) de Anderson (1983) para un viento a altura
+    de llama media (mph), acotada a [1, 8] como en FARSITE/BehavePlus."""
+    lwr = 0.936 * np.exp(0.2566 * viento_llama_mph) + 0.461 * np.exp(-0.1548 * viento_llama_mph) - 0.397
+    return np.clip(lwr, 1.0, 8.0)
 
 
 def razon_largo_ancho(modelo: ModeloCombustible, clima: dict) -> float:
@@ -292,9 +306,42 @@ def razon_largo_ancho(modelo: ModeloCombustible, clima: dict) -> float:
     velocidad de viento efectiva a altura de llama media (Anderson 1983).
     """
     viento_10m_ms = clima.get("viento_velocidad", 3.0)
-    viento_mph = viento_10m_ms * 2.23694 * modelo.reduccion_viento
-    lwr = 0.936 * np.exp(0.2566 * viento_mph) + 0.461 * np.exp(-0.1548 * viento_mph) - 0.397
-    return float(np.clip(lwr, 1.0, 8.0))
+    return float(_lwr_anderson(viento_10m_ms * 2.23694 * modelo.reduccion_viento))
+
+
+def elipse_efectiva(base: _ResultadoBase, viento_hacia_deg: float,
+                    pendiente_tan: np.ndarray, azimut_subida_deg: np.ndarray):
+    """
+    Elipse de propagación de cada celda con viento y pendiente combinados
+    como VECTORES (Finney 1998, FARSITE; ver también Andrews 2018):
+    phi_w apunta hacia donde sopla el viento y phi_s cuesta arriba; su
+    resultante phi_e da la velocidad de cabeza R = R0 (1 + phi_e) y su
+    dirección. La forma (LWR) sale del "viento efectivo": el viento que por
+    sí solo produciría phi_e, invirtiendo la función de viento de Rothermel.
+
+    pendiente_tan y azimut_subida_deg son arrays (una pendiente por celda).
+    Devuelve arrays (r_cabeza, r_cola, lwr, azimut_cabeza) en m/min y grados
+    (0 = norte, 90 = este).
+    """
+    ceros = np.zeros_like(pendiente_tan, dtype=float)
+    if base.r0_m_min <= 0.0:
+        return ceros, ceros, ceros + 1.0, ceros
+
+    phi_s = 5.275 * max(base.beta, 1e-6) ** (-0.3) * np.square(pendiente_tan)
+    aw, au = np.radians(viento_hacia_deg), np.radians(azimut_subida_deg)
+    este = base.phi_viento * np.sin(aw) + phi_s * np.sin(au)
+    norte = base.phi_viento * np.cos(aw) + phi_s * np.cos(au)
+    phi_e = np.hypot(este, norte)
+    azimut_cabeza = np.degrees(np.arctan2(este, norte)) % 360.0
+
+    divisor = base.c_viento * base.rpr ** (-base.e_viento) if base.c_viento > 0 and base.rpr > 0 else 0.0
+    viento_efectivo_ft_min = (phi_e / divisor) ** (1.0 / base.b_viento) if divisor > 0 else ceros
+    lwr = _lwr_anderson(viento_efectivo_ft_min / 88.0)
+
+    excentricidad = np.sqrt(1.0 - 1.0 / np.square(lwr))
+    r_cabeza = base.r0_m_min * (1.0 + phi_e)
+    r_cola = r_cabeza * (1.0 - excentricidad) / (1.0 + excentricidad)
+    return r_cabeza, r_cola, lwr, azimut_cabeza
 
 
 def velocidad_direccional(
