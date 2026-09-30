@@ -15,6 +15,13 @@ class CalculadorMetricas:
         self.origen = origen
         self._etiquetas_edificios = None
         self._num_edificios_totales = 0
+        # Velocidad de cabeza congelada una vez que el frente toca el borde
+        # de la grilla (ver generar_reporte): de ahí en adelante la distancia
+        # al origen queda acotada por el tamaño de la grilla mientras el
+        # tiempo sigue creciendo, así que seguir recalculando haría caer la
+        # velocidad reportada aunque el fuego siga avanzando fuera de vista.
+        self._ultima_velocidad_cabeza = 0.0
+        self._toco_borde = False
 
     def _preparar_edificios(self, grid_inicial):
         """
@@ -53,15 +60,34 @@ class CalculadorMetricas:
             (urbanas_afectadas_celdas / urbanas_iniciales * 100) if urbanas_iniciales > 0 else 0
         )
 
+        # ¿El frente toca el borde de la grilla? A partir de ahí la distancia
+        # al origen queda acotada por el tamaño de la grilla, no por dónde
+        # está realmente el fuego.
+        toca_borde_ahora = bool(
+            mascara_afectada[0, :].any() or mascara_afectada[-1, :].any()
+            or mascara_afectada[:, 0].any() or mascara_afectada[:, -1].any()
+        )
+
         # Velocidad de cabeza: distancia del origen a la celda afectada más
         # lejana, sobre el tiempo transcurrido. (sqrt(área)/tiempo, lo que se
         # usaba antes, no es una velocidad: en un círculo infla el radio 1.77x.)
         if tiempo_transcurrido_min <= 0 or celdas_afectadas_total == 0:
             velocidad_avance = 0.0
         elif self.origen is not None:
-            filas_af, cols_af = np.nonzero(mascara_afectada)
-            distancia_m = np.hypot(filas_af - self.origen[0], cols_af - self.origen[1]).max() * self.tam_celda_m
-            velocidad_avance = distancia_m / tiempo_transcurrido_min
+            if self._toco_borde:
+                # Ya veníamos congelados: la distancia acotada por el borde
+                # no dice nada nuevo, se mantiene el último valor válido.
+                velocidad_avance = self._ultima_velocidad_cabeza
+            else:
+                # Todavía no estaba congelado: este cálculo es válido incluso
+                # si es el paso en que recién toca el borde (el frente apenas
+                # llega exactamente ahí, la distancia no está acotada aún).
+                filas_af, cols_af = np.nonzero(mascara_afectada)
+                distancia_m = np.hypot(filas_af - self.origen[0], cols_af - self.origen[1]).max() * self.tam_celda_m
+                velocidad_avance = distancia_m / tiempo_transcurrido_min
+                self._ultima_velocidad_cabeza = velocidad_avance
+            if toca_borde_ahora:
+                self._toco_borde = True
         else:
             velocidad_avance = np.sqrt(area_afectada_m2 / np.pi) / tiempo_transcurrido_min
 
@@ -74,4 +100,5 @@ class CalculadorMetricas:
             "edificios_afectados": int(edificios_afectados),
             "porcentaje_urbano_afectado": round(porcentaje_urbano_afectado, 2),
             "velocidad_m_min": round(velocidad_avance, 2),
+            "toca_borde": self._toco_borde,
         }

@@ -346,7 +346,8 @@ if ejecutar:
             if np.isfinite(sim.llegada[[0, -1], :]).any() or np.isfinite(sim.llegada[:, [0, -1]]).any():
                 st.warning(
                     "⚠️ El incendio alcanzó el borde del área simulada: desde ahí el área real sería mayor. "
-                    "Aumenta el radio para verlo completo."
+                    "Aumenta el radio para verlo completo. La velocidad de cabeza mostrada corresponde al "
+                    "último tramo medible antes de tocar el borde."
                 )
 
     except ValueError as e_val:
