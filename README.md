@@ -63,9 +63,10 @@ Estados de celda: `vegetación ligera` (pasto/matorral, por defecto),
 Se pide una malla gruesa de elevación (10×10 = 100 puntos, el máximo
 que acepta la API de elevación de Open-Meteo por consulta) en una sola
 llamada, y se interpola bilinealmente a la resolución fina de la
-grilla. La pendiente real (por dirección) alimenta el coeficiente de
-pendiente de Rothermel (ver punto 5): el fuego se propaga más rápido
-cuesta arriba y más lento cuesta abajo.
+grilla. La pendiente real de cada celda (magnitud y azimut cuesta arriba,
+un campo continuo, no una dirección fija de una vecindad) alimenta el
+coeficiente de pendiente de Rothermel (ver punto 5): el fuego se propaga
+más rápido cuesta arriba y más lento cuesta abajo.
 
 ### 3. Clima evolutivo o condiciones controladas (`ingesta_clima.py`, `entorno_simulacion.py`)
 Dos modos, elegibles en la barra lateral:
@@ -76,7 +77,8 @@ Dos modos, elegibles en la barra lateral:
 - **Condiciones controladas (manual):** el usuario fija a mano las
   mismas variables que devuelve la API (temperatura, humedad relativa,
   viento en velocidad/ráfagas/dirección, precipitación, radiación
-  solar, humedad de suelo, VPD), y ese único escenario se mantiene
+  solar, humedad de suelo, VPD), además de la humedad del combustible
+  vivo (solo afecta al bosque), y ese único escenario se mantiene
   constante durante toda la corrida. Útil para un análisis de
   sensibilidad puro ("¿qué pasaría si el viento fuera de 40 km/h desde
   el norte, sin importar qué clima haga hoy realmente ahí?"). El
@@ -88,8 +90,9 @@ El núcleo del motor ya no es una fórmula ad-hoc: es el **modelo de
 propagación superficial de Rothermel (1972)** — el mismo motor
 matemático detrás de BehavePlus y FARSITE — combinado con la **elipse
 de forma de incendio impulsada por viento de Anderson (1983)**. Para
-cada dirección de la vecindad de Moore, se calcula una velocidad de
-avance real en **metros/minuto**, no una probabilidad inventada.
+cada celda, con el viento y la pendiente efectivos de ese punto, se
+calcula una velocidad de avance real en **metros/minuto**, no una
+probabilidad inventada.
 
 - **Modelos de combustible estándar:** la vegetación ligera (pasto,
   por defecto) usa el modelo FBFM1 "Short grass" y la vegetación densa
@@ -133,7 +136,7 @@ El frente de fuego es el contorno cero de una función φ sobre la grilla
 (φ ≤ 0 = quemado) y avanza en su dirección normal a la velocidad que dicta
 la elipse de cada celda: la *función soporte* de la elipse de Rothermel +
 Anderson con viento y pendiente vectoriales. Un incendio puntual crece así
-exactamente como la elipse, sin el sesgo de los métodos de vecinos fijos
+muy cercano a la elipse, sin el sesgo de los métodos de vecinos fijos
 (un autómata de 8 vecinos pierde ~30% del área con viento moderado y hasta
 ~80% con viento fuerte, porque solo puede avanzar en 8 direcciones).
 
@@ -141,16 +144,21 @@ exactamente como la elipse, sin el sesgo de los métodos de vecinos fijos
   adaptativo (el frente avanza como mucho media celda por subpaso).
 - φ se reinicializa como distancia con signo en cada subpaso (Sussman,
   Smereka y Osher, 1994; corrección de subcelda de Russo y Smereka, 2000).
-- Cada celda registra el minuto de llegada del frente: de ahí salen el área
-  y la velocidad de cabeza en cada instante.
+- Cada celda registra el minuto de llegada del frente: de ahí sale el área en
+  cada paso y una velocidad de cabeza promedio desde la ignición (distancia
+  al origen sobre tiempo transcurrido), no una velocidad instantánea.
 - Agua y vías (velocidad 0) funcionan como cortafuegos.
 - La humedad del combustible muerto responde al clima con su tiempo de
   respuesta (clases 1h/10h/100h), no al instante.
 - Heterogeneidad opcional (factor aleatorio fijo por celda, con semilla)
   para estudios con réplicas; por defecto el modelo es determinista.
-- Verificación contra la elipse analítica: círculo −0.8% de área; LWR 1.8
-  −2.1%; LWR 3.5 +4.7%; velocidad de cabeza con error ≤ 2%. Rango validado:
-  LWR ≤ 4; por encima la app avisa.
+- Verificación contra la elipse analítica a resolución fina (celdas de 2 m,
+  la que usan los tests de `tests/test_motor.py`): círculo −0.8% de área;
+  LWR 1.8 −2.1%; LWR 3.5 +4.7%; velocidad de cabeza con error ≤ 2%. A la
+  resolución de 10 m que usan la app y el laboratorio de sensibilidad el
+  error crece por cuantización (entre −11.7% y +3.2% a los 120 min, según
+  la revisión de este motor). Rango validado: LWR ≤ 4; por encima la app
+  avisa.
 
 **¿Y si el clima no da para que arda ni el punto de origen?** Antes de
 encender el fuego, `SimuladorIncendio.puede_arder` verifica que
@@ -173,7 +181,7 @@ como en hectáreas.
 
 ### 7. Índice Fosberg (FFWI)
 Se muestra, solo con fines informativos (no alimenta el motor de
-probabilidad), el Fosberg Fire Weather Index — un índice real y
+propagación), el Fosberg Fire Weather Index — un índice real y
 citable (Fosberg, M.A., 1978) que resume qué tan propicias son las
 condiciones climáticas actuales para el fuego.
 
@@ -197,7 +205,7 @@ elevación) — todos servicios públicos y gratuitos, sin llave de API.
 ## Resultados del laboratorio de sensibilidad
 
 `python -B experimentos.py` varía un parámetro a la vez sobre un terreno
-controlado (200×200 celdas de 10 m, combustible único, clima constante;
+controlado (201×201 celdas de 10 m, combustible único, clima constante;
 base: 30°C, 35% HR, viento 3 m/s, sin pendiente, bosque) y registra área y
 velocidad de cabeza cada 15 min durante 2 h. Resultados completos paso a
 paso en `resultados/barrido.csv`; curvas en `resultados/barrido_*.png`.
@@ -208,10 +216,12 @@ Tablas siguientes: valor del parámetro → área y velocidad de cabeza a los
 
 | viento | área (ha) | velocidad de cabeza (m/min) |
 |---|---|---|
-| 0 | 0.37 | 0.26 |
-| 2 | 0.36 | 0.42 |
-| 4 | 0.75 | 0.83 |
-| 6 | 1.33 | 1.25 |
+| 0.0 | 0.37 | 0.26 |
+| 0.5 | 0.24 | 0.26 |
+| 1.0 | 0.25 | 0.33 |
+| 2.0 | 0.36 | 0.42 |
+| 4.0 | 0.75 | 0.83 |
+| 6.0 | 1.33 | 1.25 |
 
 **Humedad relativa (%)**
 
@@ -261,23 +271,39 @@ la grilla, así que todas las curvas excepto esa son comparables tal cual.
 
 Puntos de discusión:
 
-- **Efecto relativo:** de mayor a menor impacto en el área a las 2 h
-  (excluyendo el barrido de combustible, no comparable porque el pasto sale
-  de la grilla): viento (0.36→1.33 ha, ×3.7) y pendiente (0.52→1.70 ha,
-  ×3.3) mueven el área más que la humedad del combustible vivo (0.36→0.99
-  ha, ×2.75) y la humedad relativa (0.42→0.70 ha, ×1.7). La temperatura
-  apenas la mueve (0.52→0.53 ha, ×1.02).
+- **Efecto relativo (en los rangos de valores elegidos para este barrido):**
+  de mayor a menor impacto en el área a las 2 h (excluyendo el barrido de
+  combustible, no comparable porque el pasto sale de la grilla): viento
+  (0.24→1.33 ha, ×5.5, contando el mínimo real en 0.5 m/s) mueve el área
+  más que pendiente (0.52→1.70 ha, ×3.3), que a su vez supera a la humedad
+  del combustible vivo (0.36→0.99 ha, ×2.75) y a la humedad relativa
+  (0.42→0.70 ha, ×1.7). La temperatura apenas la mueve (0.52→0.53 ha,
+  ×1.02). Este orden no es una ley general: depende del rango elegido para
+  cada parámetro (p. ej. pendiente hasta 45%, viento hasta 6 m/s) y
+  cambiaría con otros rangos.
 - **La temperatura casi no mueve el fuego:** en Rothermel la temperatura
   del aire no aparece como variable directa de la velocidad de propagación;
   solo entra indirectamente vía la humedad de equilibrio del combustible
   (EMC). Por eso el barrido de temperatura es casi plano (0.52 → 0.53 ha
   entre 20°C y 35°C) frente a los ×3 y ×4 de viento o pendiente.
-- **Viento suave vs. moderado/fuerte:** de 0 a 2 m/s la velocidad de cabeza
-  sube (0.26 → 0.42 m/min) pero el área a los 120 min no crece (0.37 → 0.36
-  ha): con viento débil la elipse de Anderson se alarga (crece el LWR) más
-  rápido de lo que Rothermel acelera la cabeza, así que el área total no
-  gana lo que pierde de ancho. De 2 a 6 m/s (viento moderado/fuerte) ambos
-  crecen juntos (velocidad 0.42→1.25 m/min, área 0.36→1.33 ha).
+- **Viento suave vs. moderado/fuerte:** con pasos más finos (0.5 y 1.0 m/s,
+  no solo 0/2/4/6) se ve con más claridad el efecto real: el área a los 120
+  min de hecho CAE de calma a viento suave (0.37 → 0.24 ha a 0.5 m/s, 0.25
+  ha a 1.0 m/s) antes de empezar a crecer desde los 2 m/s (0.36 ha) en
+  adelante. La velocidad de cabeza, en cambio, sube desde el principio
+  (0.26 → 0.26 → 0.33 → 0.42 m/min): con viento débil la elipse de Anderson
+  se alarga más rápido de lo que Rothermel acelera la cabeza (LWR 1.00 en
+  calma → 1.04 a 0.5 m/s → 1.08 a 1 m/s → 1.18 a 2 m/s), así que el área
+  total pierde de ancho más de lo que gana de largo. Recién de 2 a 6 m/s
+  (viento moderado/fuerte) ambos crecen juntos (velocidad 0.42→1.25 m/min,
+  área 0.36→1.33 ha). Aparte: el área de calma (0.37 ha) ya está algo
+  inflada por el tamaño de celda (10 m) frente al valor analítico, porque
+  el círculo de calma mide apenas ~3 celdas de radio a esta resolución.
+- **Cuantización de la velocidad:** a 10 m de resolución la distancia al
+  origen solo crece de a saltos de 1 celda; a los 120 min eso son saltos de
+  ~10 m / 120 min ≈ 0.08 m/min en la velocidad de cabeza reportada — por
+  eso algunas curvas de velocidad en `resultados/barrido_*.png` no son
+  perfectamente suaves.
 - **Pasto con viento sale de la grilla:** con el clima base (viento 3 m/s)
   el pasto llega al borde de la grilla de 2×2 km antes de los 120 min
   (`toca_borde=True` en la última fila); a partir de ahí el área deja de
@@ -324,7 +350,9 @@ Puntos de discusión:
 - Anderson, H.E. (1983). *Predicting Wind-Driven Wild Land Fire Size
   and Shape*. USDA Forest Service, RP-INT-305.
 - Anderson, H.E. (1969). *Heat Transfer and Fire Spread*. USDA Forest
-  Service, RP-INT-69 (tiempo de residencia de llama).
+  Service, RP-INT-69 (tiempo de residencia de llama: `modelo_rothermel.py`
+  lo calcula como parte del modelo de combustible, pero no se usa
+  activamente en el bucle de propagación de `simulador_automata.py`).
 - Vacchiano, G. & Ascoli, D. (2015). "An Implementation of the
   Rothermel Fire Spread Model in the R Programming Language". *Fire
   Technology*, 51(3) — la implementación de este proyecto se portó y
@@ -332,7 +360,9 @@ Puntos de discusión:
 - Fosberg, M.A. (1978). *Weather in Wildland Fire Management: The Fire
   Weather Index* (índice Fosberg, informativo).
 - Alexandridis, A. et al. (2008). "A cellular automata model for forest
-  fire spread prediction" (enfoque general de autómata celular).
+  fire spread prediction" (antecedente con enfoque de autómata celular de
+  vecinos fijos; el motor actual de este proyecto ya no sigue ese enfoque,
+  es un frente de conjuntos de nivel).
 - Finney, M.A. (1998). *FARSITE: Fire Area Simulator—Model Development
   and Evaluation*. USDA Forest Service, RMRS-RP-4 (combinación vectorial de
   viento y pendiente).

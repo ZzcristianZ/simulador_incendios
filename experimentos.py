@@ -36,7 +36,7 @@ TERRENO_BASE = {"pendiente_pct": 0.0, "combustible": ESTADO_VEGETACION_DENSA}
 NOMBRES_COMBUSTIBLE = {ESTADO_VEGETACION_LIGERA: "pasto", ESTADO_VEGETACION_DENSA: "bosque"}
 
 BARRIDOS = {
-    "viento_velocidad": [0.0, 2.0, 4.0, 6.0],
+    "viento_velocidad": [0.0, 0.5, 1.0, 2.0, 4.0, 6.0],
     "humedad_relativa": [20.0, 35.0, 50.0, 65.0],
     "temperatura": [20.0, 25.0, 30.0, 35.0],
     "humedad_combustible_vivo": [60.0, 100.0, 140.0],

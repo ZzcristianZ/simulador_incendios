@@ -65,6 +65,6 @@ else:
         print(f" - Área afectada: {reporte['area_m2']} m² ({reporte['area_hectareas']} ha)")
         print(f" - Focos activos en llamas: {reporte['celdas_activas']}")
         print(f" - Edificios afectados: {reporte['edificios_afectados']} / {reporte['edificios_totales']}")
-        print(f" - Velocidad de avance estimada: {reporte['velocidad_m_min']} m/min")
+        print(f" - Velocidad de cabeza estimada: {reporte['velocidad_m_min']} m/min")
 
 print("\n--- FIN DE LA SIMULACIÓN ---")

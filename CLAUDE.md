@@ -18,7 +18,7 @@ Open-Meteo), sin llaves ni credenciales que gestionar.
   `python -B -m unittest discover -s tests -t . -v`
 - Laboratorio de sensibilidad (escribe `resultados/`): `python -B experimentos.py`
 - Verificación rápida de sintaxis:
-  `python -m py_compile app.py simulador_automata.py main_prueba.py modelo_rothermel.py modelo_probabilidad.py entorno_simulacion.py ingesta_clima.py ingesta_geografica.py metricas_fuego.py`
+  `python -m py_compile app.py simulador_automata.py main_prueba.py modelo_rothermel.py modelo_probabilidad.py entorno_simulacion.py ingesta_clima.py ingesta_geografica.py metricas_fuego.py experimentos.py`
 - **Formateador/linter: ninguno instalado.** No hay black/ruff/flake8/autopep8
   en el entorno ni configuración (`pyproject.toml`, `.flake8`, etc.). No lo
   inventes ni lo corras automáticamente.
@@ -31,8 +31,8 @@ Open-Meteo), sin llaves ni credenciales que gestionar.
   (geografía OSM), `entorno_simulacion.py` (combina terreno + clima),
   `modelo_probabilidad.py` (FFWI/humedad, informativo), `modelo_rothermel.py`
   (física de propagación Rothermel/Anderson), `simulador_automata.py`
-  (autómata celular), `metricas_fuego.py` (métricas), `app.py` (interfaz
-  Streamlit), `main_prueba.py` (demo de consola).
+  (frente de conjuntos de nivel), `metricas_fuego.py` (métricas), `app.py`
+  (interfaz Streamlit), `main_prueba.py` (demo de consola).
 - El clima no sabe nada del terreno, el terreno no sabe nada del clima; el
   autómata es el único módulo que combina ambos. Esto evita el doble conteo
   de factores climáticos que tenía la versión original del proyecto.
