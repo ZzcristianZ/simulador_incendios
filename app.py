@@ -13,14 +13,184 @@ import streamlit as st
 # 1. Configuración panorámica
 st.set_page_config(page_title="Simulador de Incendios", layout="wide", initial_sidebar_state="expanded")
 
-# 2. CSS optimizado para alta densidad
+# 2. Consola neumórfica (soft UI). Colores base, fuentes y radios viven en
+# .streamlit/config.toml; aquí solo lo que el tema de Streamlit no puede
+# expresar: el par de sombras clara/oscura. Dos tratamientos, nunca uno solo:
+#   - relieve (extruido): lo que el sistema entrega o lo que se acciona
+#     -> paneles del sidebar, tiles de telemetría, marcos de pantalla, botón.
+#   - ranura (hundido): donde el usuario escribe o donde el sistema avisa
+#     -> text/number inputs, barra de progreso, avisos.
+# Acentos: ember (#FF6B35) solo en el botón de inicio = fuego/acción; teal
+# (#5FD4D0) en lecturas y controles = instrumentación. Contraste verificado
+# (WCAG): texto #E8E6E3 12.99:1 sobre fondo / 11.71:1 sobre superficie;
+# atenuado #8B93A1 5.23:1 / 4.71:1; teal 9.11:1; texto del botón #1A0F0A
+# 6.63:1 sobre ember. Fuera a propósito: fondo casi negro, un solo acento,
+# terracota, etiquetas en mayúsculas con tracking y una misma sombra gris
+# plana para todo (el kit genérico de "tarjetas SaaS").
+# Se inyecta en cada rerun con el mismo contenido y en la misma posición,
+# así que Streamlit no lo duplica ni lo repinta.
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; padding-bottom: 0rem; padding-left: 2rem; padding-right: 2rem; }
+    :root {
+        --panel-bg: #1C2128;
+        --panel-surface: #232935;
+        --shadow-dark: #12151B;
+        --shadow-light: #2E3644;
+        --ember: #FF6B35;
+        --ember-glow: #FF8F5C;
+        --telemetry: #5FD4D0;
+        --text-primary: #E8E6E3;
+        --text-muted: #8B93A1;
+        --relieve: 6px 6px 14px var(--shadow-dark), -5px -5px 12px var(--shadow-light);
+        --relieve-corto: 4px 4px 9px var(--shadow-dark), -3px -3px 8px var(--shadow-light);
+        --ranura: inset 3px 3px 6px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
+        --anillo: 2px solid var(--ember-glow);
+        --fuente-dato: "Space Grotesk", "Inter", sans-serif;
+    }
+
+    .block-container { padding-top: 1rem; padding-bottom: 1.5rem; padding-left: 2rem; padding-right: 2rem; }
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-    div[data-testid="metric-container"] { margin-bottom: -15px; }
     h1 { font-size: 1.8rem !important; margin-bottom: 0rem !important; padding-bottom: 0rem !important;}
     h3 { font-size: 1.2rem !important; margin-top: 0rem !important; margin-bottom: 0.5rem !important;}
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p { color: var(--text-muted); }
+
+    /* El sidebar es la misma superficie que el área principal; lo separa un
+       borde en relieve, no otro color. */
+    [data-testid="stSidebar"] { box-shadow: 5px 0 14px var(--shadow-dark); }
+    [data-testid="stSidebar"] h3 { font-size: 1.05rem !important; }
+
+    /* Paneles del sidebar (st.container con key="panel_*"): extruidos. */
+    [class*="st-key-panel_"] {
+        background: var(--panel-surface);
+        border-radius: 20px;
+        padding: 1rem 1rem 1.15rem;
+        box-shadow: var(--relieve);
+        margin-bottom: 0.6rem;
+    }
+
+    /* Entradas: ranuras hundidas en el panel. El borde de Streamlit se anula
+       porque aquí la forma la da la sombra; el foco lo marca el anillo. */
+    [data-testid="stTextInputRootElement"],
+    [data-testid="stNumberInputContainer"] {
+        background: var(--panel-bg);
+        border-color: transparent !important;
+        border-radius: 10px;
+        box-shadow: var(--ranura);
+    }
+    [data-testid="stTextInputRootElement"] input,
+    [data-testid="stNumberInputContainer"] input,
+    [data-testid="stNumberInputContainer"] button {
+        background: transparent;
+        color: var(--text-primary);
+    }
+    [data-testid="stNumberInputContainer"] button:hover { background: transparent; color: var(--telemetry); }
+    /* Casilla y radio sin marcar: pequeña ranura con borde atenuado; sin él
+       quedan en ~1.2:1 contra el panel (WCAG 1.4.11 pide 3:1; así queda 4.7:1). */
+    [data-testid="stCheckbox"] label:not([data-selected="true"]) > span + div {
+        background: var(--panel-bg);
+        border-color: var(--text-muted);
+        box-shadow: inset 2px 2px 4px var(--shadow-dark);
+    }
+    [data-testid="stRadioOption"]:not([data-selected="true"]) > span + div > div > div:first-child {
+        background: var(--panel-bg);
+        box-shadow: inset 0 0 0 1px var(--text-muted), inset 2px 2px 4px var(--shadow-dark);
+    }
+
+    /* Foco visible en todo control: anillo ember separado del borde. */
+    .stApp :focus-visible { outline: var(--anillo) !important; outline-offset: 2px; }
+    [data-testid="stTextInputRootElement"]:focus-within,
+    [data-testid="stNumberInputContainer"]:focus-within { outline: var(--anillo); outline-offset: 2px; }
+    [data-testid="stCheckbox"] label[data-focus-visible="true"],
+    [data-testid="stRadioOption"][data-focus-visible="true"] { outline: var(--anillo); outline-offset: 3px; border-radius: 6px; }
+    [data-testid="stSlider"] [data-focus-visible="true"] { outline: var(--anillo); outline-offset: 3px; }
+
+    /* El botón de inicio: el único elemento audaz de la página. Extruido y
+       con brillo ember; al presionarlo la sombra se invierte y se hunde. */
+    .stApp [data-testid="stBaseButton-primary"] {
+        background: linear-gradient(145deg, var(--ember-glow) 0%, var(--ember) 55%);
+        color: #1A0F0A;
+        border: none;
+        border-radius: 16px;
+        min-height: 3.25rem;
+        box-shadow: 7px 7px 16px var(--shadow-dark), -5px -5px 13px var(--shadow-light),
+                    0 0 22px rgba(255, 107, 53, 0.28);
+        transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .stApp [data-testid="stBaseButton-primary"] p {
+        font-family: var(--fuente-dato);
+        font-weight: 700;
+        font-size: 1.02rem;
+        color: inherit;
+    }
+    .stApp [data-testid="stBaseButton-primary"]:hover {
+        background: linear-gradient(145deg, #FFA277 0%, var(--ember-glow) 55%);
+        color: #1A0F0A;
+        border: none;
+        box-shadow: 7px 7px 16px var(--shadow-dark), -5px -5px 13px var(--shadow-light),
+                    0 0 30px rgba(255, 143, 92, 0.42);
+    }
+    .stApp [data-testid="stBaseButton-primary"]:active {
+        background: var(--ember);
+        color: #1A0F0A;
+        transform: translateY(1px);
+        box-shadow: inset 5px 5px 12px rgba(122, 38, 8, 0.6), inset -4px -4px 10px rgba(255, 190, 150, 0.35);
+    }
+    .stApp [data-testid="stBaseButton-primary"]:focus-visible { outline-offset: 4px; }
+
+    /* Telemetría: tiles extruidos; número en Space Grotesk teal, etiqueta
+       pequeña y atenuada en Inter. */
+    [data-testid="stMetric"] {
+        background: var(--panel-surface);
+        border-radius: 14px;
+        padding: 0.65rem 0.75rem 0.7rem;
+        box-shadow: var(--relieve-corto);
+    }
+    /* Seis tiles por fila no caben en ventanas medianas: mejor que la lectura
+       pase a dos líneas a que Streamlit la corte con "…". */
+    [data-testid="stMetricLabel"] p, [data-testid="stMetricValue"] p { white-space: normal; }
+    /* ...y que los tiles de una misma fila igualen su altura cuando eso pasa. */
+    [data-testid="stColumn"]:has([data-testid="stMetric"]) > [data-testid="stVerticalBlock"],
+    [data-testid="stElementContainer"]:has(> [data-testid="stMetric"]),
+    [data-testid="stMetric"] { height: 100%; }
+    [data-testid="stMetricLabel"] p { font-size: 0.8rem; color: var(--text-muted); }
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] p {
+        font-family: var(--fuente-dato);
+        color: var(--telemetry);
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+    }
+    [data-testid="stMetricDelta"], [data-testid="stMetricDelta"] p { color: var(--text-muted); }
+
+    /* Pantallas (grilla y mapa): marco extruido con la imagen dentro. */
+    [data-testid="stElementContainer"]:has(> [data-testid="stFullScreenFrame"] [data-testid="stImage"]),
+    [data-testid="stElementContainer"]:has(> iframe[data-testid="stIFrame"]) {
+        background: var(--panel-surface);
+        border-radius: 18px;
+        padding: 0.6rem;
+        box-shadow: var(--relieve);
+    }
+    [data-testid="stImage"] img { border-radius: 12px; }
+    /* El iframe del mapa mide 380px fijos, pero el mapa de folium adentro es
+       responsivo (alto = 60% del ancho, más 8px de margen del body arriba y
+       abajo): sin este ajuste el marco mostraría una franja vacía debajo.
+       ponytail: acoplado al ratio por defecto de folium (60%); si se le pasa
+       otro ratio a folium.Map/Figure, actualizar este 60cqw. */
+    [data-testid="stElementContainer"]:has(> iframe[data-testid="stIFrame"]) {
+        container-type: inline-size;
+        padding: 2px;
+    }
+    iframe[data-testid="stIFrame"] { height: calc(60cqw + 6.4px) !important; }
+
+    /* Avisos: conservan su color semántico, levemente hundidos. */
+    [data-testid="stAlertContainer"] {
+        border-radius: 12px;
+        box-shadow: inset 2px 2px 5px rgba(18, 21, 27, 0.75), inset -2px -2px 5px rgba(46, 54, 68, 0.55);
+    }
+    [data-testid="stProgressBarTrack"] { background: var(--panel-bg); box-shadow: var(--ranura); }
+
+    /* Separador: una hendidura (línea oscura + línea de luz), no una raya plana. */
+    hr { border: 0 !important; border-top: 1px solid var(--shadow-dark) !important;
+         border-bottom: 1px solid var(--shadow-light) !important; background: none; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -33,59 +203,62 @@ st.caption(
 
 # 3. Panel Lateral Dinámico
 with st.sidebar:
-    st.markdown("### 📍 Ubicación")
-    lugar_input = st.text_input(
-        "Dirección o lugar (punto de origen del incendio):", "Ocaña, Colombia",
-        help="Mientras más exacta la dirección, más preciso el punto donde 'inicia' el incendio."
-    )
-    usar_coords_manuales = st.checkbox("Usar latitud/longitud exactas en vez de una dirección")
-    if usar_coords_manuales:
-        col_lat, col_lon = st.columns(2)
-        lat_input = col_lat.number_input("Latitud:", value=8.243500, format="%.6f")
-        lon_input = col_lon.number_input("Longitud:", value=-73.354100, format="%.6f")
-    else:
-        lat_input, lon_input = None, None
+    with st.container(key="panel_ubicacion"):
+        st.markdown("### 📍 Ubicación")
+        lugar_input = st.text_input(
+            "Dirección o lugar (punto de origen del incendio):", "Ocaña, Colombia",
+            help="Mientras más exacta la dirección, más preciso el punto donde 'inicia' el incendio."
+        )
+        usar_coords_manuales = st.checkbox("Usar latitud/longitud exactas en vez de una dirección")
+        if usar_coords_manuales:
+            col_lat, col_lon = st.columns(2)
+            lat_input = col_lat.number_input("Latitud:", value=8.243500, format="%.6f")
+            lon_input = col_lon.number_input("Longitud:", value=-73.354100, format="%.6f")
+        else:
+            lat_input, lon_input = None, None
 
-    st.markdown("### 🌦️ Clima")
-    modo_clima = st.radio(
-        "Fuente del clima:", ["🌐 Tiempo real (API)", "🎛️ Condiciones controladas (manual)"],
-        help="En tiempo real se consulta el clima actual/pronóstico de Open-Meteo. En condiciones "
-             "controladas fijas tú mismo cada variable y se mantiene constante durante toda la corrida "
-             "(útil para un escenario hipotético o un análisis de sensibilidad)."
-    )
-    clima_manual_valores = None
-    if modo_clima.startswith("🎛️"):
-        usar_clima_evolutivo = False
-        cm1, cm2 = st.columns(2)
-        clima_manual_valores = {
-            "temperatura": cm1.number_input("Temperatura (°C):", value=25.0, step=1.0),
-            "humedad_relativa": cm2.number_input("Humedad relativa (%):", value=50.0, min_value=0.0, max_value=100.0, step=1.0),
-            "viento_velocidad": cm1.number_input("Viento, velocidad (m/s):", value=3.0, min_value=0.0, step=0.5),
-            "viento_rafagas": cm2.number_input("Viento, ráfagas (m/s):", value=4.0, min_value=0.0, step=0.5),
-            "viento_direccion": cm1.number_input("Viento, dirección (0-360°):", value=0.0, min_value=0.0, max_value=360.0, step=10.0),
-            "precipitacion": cm2.number_input("Precipitación (mm):", value=0.0, min_value=0.0, step=1.0),
-            "radiacion_solar": cm1.number_input("Radiación solar (W/m²):", value=200.0, min_value=0.0, step=50.0),
-            "humedad_suelo": cm2.number_input("Humedad de suelo (m³/m³):", value=0.30, min_value=0.0, max_value=1.0, step=0.05),
-            "vpd": cm1.number_input("Déficit de presión de vapor (kPa):", value=1.2, min_value=0.0, step=0.1),
-            "humedad_combustible_vivo": cm2.number_input(
-                "Humedad combustible vivo (%):", value=100.0, min_value=30.0, max_value=250.0, step=10.0,
-                help="Solo afecta al bosque. 100% es un valor estacional típico; más bajo = vegetación más seca."),
-        }
-    else:
-        usar_clima_evolutivo = st.checkbox("Clima evolutivo por hora (pronóstico real)", value=True,
-                                            help="Si se desactiva, se usa el clima actual fijo durante toda la simulación.")
+    with st.container(key="panel_clima"):
+        st.markdown("### 🌦️ Clima")
+        modo_clima = st.radio(
+            "Fuente del clima:", ["🌐 Tiempo real (API)", "🎛️ Condiciones controladas (manual)"],
+            help="En tiempo real se consulta el clima actual/pronóstico de Open-Meteo. En condiciones "
+                 "controladas fijas tú mismo cada variable y se mantiene constante durante toda la corrida "
+                 "(útil para un escenario hipotético o un análisis de sensibilidad)."
+        )
+        clima_manual_valores = None
+        if modo_clima.startswith("🎛️"):
+            usar_clima_evolutivo = False
+            cm1, cm2 = st.columns(2)
+            clima_manual_valores = {
+                "temperatura": cm1.number_input("Temperatura (°C):", value=25.0, step=1.0),
+                "humedad_relativa": cm2.number_input("Humedad relativa (%):", value=50.0, min_value=0.0, max_value=100.0, step=1.0),
+                "viento_velocidad": cm1.number_input("Viento, velocidad (m/s):", value=3.0, min_value=0.0, step=0.5),
+                "viento_rafagas": cm2.number_input("Viento, ráfagas (m/s):", value=4.0, min_value=0.0, step=0.5),
+                "viento_direccion": cm1.number_input("Viento, dirección (0-360°):", value=0.0, min_value=0.0, max_value=360.0, step=10.0),
+                "precipitacion": cm2.number_input("Precipitación (mm):", value=0.0, min_value=0.0, step=1.0),
+                "radiacion_solar": cm1.number_input("Radiación solar (W/m²):", value=200.0, min_value=0.0, step=50.0),
+                "humedad_suelo": cm2.number_input("Humedad de suelo (m³/m³):", value=0.30, min_value=0.0, max_value=1.0, step=0.05),
+                "vpd": cm1.number_input("Déficit de presión de vapor (kPa):", value=1.2, min_value=0.0, step=0.1),
+                "humedad_combustible_vivo": cm2.number_input(
+                    "Humedad combustible vivo (%):", value=100.0, min_value=30.0, max_value=250.0, step=10.0,
+                    help="Solo afecta al bosque. 100% es un valor estacional típico; más bajo = vegetación más seca."),
+            }
+        else:
+            usar_clima_evolutivo = st.checkbox("Clima evolutivo por hora (pronóstico real)", value=True,
+                                                help="Si se desactiva, se usa el clima actual fijo durante toda la simulación.")
 
-    st.markdown("### ⚙️ Configuración del Modelo")
-    radio_input = st.slider("Radio del área simulada (m):", 150, 600, 300, step=50,
-                             help="Área cuadrada alrededor del punto elegido. Radios grandes cubren más terreno pero con menos detalle por edificio.")
-    pasos_totales_input = st.number_input("Horizonte (Pasos de 15 min):", min_value=1, max_value=100, value=20)
-    velocidad_input = st.slider("Velocidad Visual (s):", 0.1, 1.0, 0.1)
+    with st.container(key="panel_modelo"):
+        st.markdown("### ⚙️ Configuración del Modelo")
+        radio_input = st.slider("Radio del área simulada (m):", 150, 600, 300, step=50,
+                                 help="Área cuadrada alrededor del punto elegido. Radios grandes cubren más terreno pero con menos detalle por edificio.")
+        pasos_totales_input = st.number_input("Horizonte (Pasos de 15 min):", min_value=1, max_value=100, value=20)
+        velocidad_input = st.slider("Velocidad Visual (s):", 0.1, 1.0, 0.1)
 
-    incluir_pendiente = st.checkbox("Efecto de pendiente del terreno (elevación real)", value=True)
-    multiplicador_escenario = st.slider(
-        "Factor de escenario (sensibilidad):", 0.5, 5.0, 1.0, step=0.5,
-        help="1.0 = condiciones medidas, sin amplificar. Súbelo para explorar un escenario más severo del que hay ahora mismo (útil para un análisis de sensibilidad en tu informe)."
-    )
+        incluir_pendiente = st.checkbox("Efecto de pendiente del terreno (elevación real)", value=True)
+        multiplicador_escenario = st.slider(
+            "Factor de escenario (sensibilidad):", 0.5, 5.0, 1.0, step=0.5,
+            help="1.0 = condiciones medidas, sin amplificar. Súbelo para explorar un escenario más severo del que hay ahora mismo (útil para un análisis de sensibilidad en tu informe)."
+        )
 
     st.markdown("---")
     ejecutar = st.button("🚀 INICIAR SIMULACIÓN", type="primary", use_container_width=True)

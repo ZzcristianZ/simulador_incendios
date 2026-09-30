@@ -1,0 +1,34 @@
+# Tema base de la consola neumórfica. Los colores, fuentes y radios que
+# Streamlit sabe aplicar por sí mismo van aquí; las sombras duales (relieve
+# vs. ranura) no existen como opción de tema y se inyectan como CSS en app.py.
+# Mantener estos hex sincronizados con los tokens :root de app.py.
+
+[theme]
+base = "dark"
+backgroundColor = "#1C2128"
+secondaryBackgroundColor = "#232935"
+textColor = "#E8E6E3"
+# Teal como primario: sliders, casillas, radios y barra de progreso son
+# instrumentación. El ember queda reservado al botón de inicio (CSS en app.py)
+# para que sea lo único que llama la atención en el panel.
+primaryColor = "#5FD4D0"
+linkColor = "#5FD4D0"
+borderColor = "#2E3644"
+showWidgetBorder = false
+showSidebarBorder = false
+baseRadius = "10px"
+buttonRadius = "16px"
+# Texto de avisos: los valores por defecto de Streamlit para info (azul) y
+# error (rojo) quedan en ~4.1:1 sobre su propio tinte; estos pasan AA (>=5.3:1).
+blueTextColor = "#8CC4FA"
+redTextColor = "#FF9A9A"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
+metricValueFontSize = "1.3rem"
+metricValueFontWeight = 600
+
+[theme.sidebar]
+# El sidebar es la misma superficie de la consola (no un panel aparte):
+# lo separa una sombra, no un cambio de color.
+backgroundColor = "#1C2128"
+secondaryBackgroundColor = "#1C2128"
