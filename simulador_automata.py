@@ -183,7 +183,8 @@ class SimuladorIncendio:
         # ponytail: el esquema upwind es isotrópico; con elipses muy alargadas
         # (LWR > 4) sobreestima el área de los flancos (+35% con LWR 8). La app
         # avisa con esto; la mejora es un Hamiltoniano de Godunov anisotrópico.
-        self.lwr_max = float(lwr[self._combustible].max()) if self._combustible.any() else 1.0
+        lwr_este_paso = float(lwr[self._combustible].max()) if self._combustible.any() else 1.0
+        self.lwr_max = max(self.lwr_max, lwr_este_paso)
         escala = multiplicador / self._factor
         a = 0.5 * (cabeza + cola) * escala
         c = 0.5 * (cabeza - cola) * escala
