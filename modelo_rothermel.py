@@ -143,13 +143,18 @@ def _componentes(modelo: ModeloCombustible):
     return cargas, savs
 
 
-def velocidad_base(modelo: ModeloCombustible, clima: dict) -> _ResultadoBase:
+def velocidad_base(modelo: ModeloCombustible, clima: dict, humedades_muertas=None) -> _ResultadoBase:
     """
     Velocidad de propagación en llano (sin pendiente) en la dirección del
     viento, más el coeficiente de viento y el packing ratio (necesario
     para el coeficiente de pendiente). Se calcula UNA vez por paso por
     modelo de combustible (el clima es uniforme sobre la grilla), no por
     celda -- igual que el resto del proyecto.
+
+    humedades_muertas: (1h, 10h, 100h) en %. Si es None, las tres clases
+    toman la humedad de equilibrio (EMC) del clima del paso. La humedad del
+    combustible vivo sale de clima["humedad_combustible_vivo"] (%) o, si no
+    viene, de la constante estacional del modelo.
     """
     cargas, savs = _componentes(modelo)
     delta = modelo.profundidad_ft
@@ -157,11 +162,11 @@ def velocidad_base(modelo: ModeloCombustible, clima: dict) -> _ResultadoBase:
     es_muerto = np.array([True, True, True, False, False])
     con_carga = cargas > 0.0
 
-    humedad_muerta = contenido_humedad_equilibrio(
-        clima.get("temperatura", 25.0), clima.get("humedad_relativa", 50.0)
-    ) / 100.0
-    humedad_viva = modelo.humedad_viva_estacional / 100.0
-    humedades = np.where(es_muerto, humedad_muerta, humedad_viva)
+    if humedades_muertas is None:
+        emc = contenido_humedad_equilibrio(clima.get("temperatura", 25.0), clima.get("humedad_relativa", 50.0))
+        humedades_muertas = (emc, emc, emc)
+    humedad_viva = clima.get("humedad_combustible_vivo", modelo.humedad_viva_estacional)
+    humedades = np.array([*humedades_muertas, humedad_viva, humedad_viva], dtype=float) / 100.0
 
     # Packing ratio (no depende de humedad ni viento).
     beta = np.sum(cargas / _RHO_PARTICULA) / delta if delta > 0 else 0.0
@@ -193,8 +198,8 @@ def velocidad_base(modelo: ModeloCombustible, clima: dict) -> _ResultadoBase:
         w_exp = cargas[:3] * np.exp(-138.0 / np.where(savs[:3] > 0, savs[:3], 1.0))
         w_exp_sum = np.sum(np.where(es_muerto[:3] & con_carga[:3], w_exp, 0.0))
         mf_pd = (
-            np.sum(np.where(es_muerto[:3] & con_carga[:3], w_exp * humedad_muerta, 0.0)) / w_exp_sum
-            if w_exp_sum > 0 else humedad_muerta
+            np.sum(np.where(es_muerto[:3] & con_carga[:3], w_exp * humedades[:3], 0.0)) / w_exp_sum
+            if w_exp_sum > 0 else humedades[0]
         )
         w_muerto_sum = w_exp_sum
         w_vivo_exp = cargas[3:] * np.exp(-500.0 / np.where(savs[3:] > 0, savs[3:], 1.0))

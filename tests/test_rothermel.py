@@ -43,5 +43,31 @@ class InvariantesFisicos(unittest.TestCase):
         self.assertEqual(R.razon_largo_ancho(R.FUEL_MODEL_DENSO, clima(30, 35, 0.0)), 1.0)
 
 
+class HumedadDeCombustible(unittest.TestCase):
+    def setUp(self):
+        self.c = clima(30, 35)
+        self.emc = contenido_humedad_equilibrio(30, 35)
+
+    def test_sin_humedades_explicitas_usa_la_emc(self):
+        implicito = R.velocidad_base(R.FUEL_MODEL_DENSO, self.c).r0_m_min
+        explicito = R.velocidad_base(R.FUEL_MODEL_DENSO, self.c, (self.emc, self.emc, self.emc)).r0_m_min
+        self.assertAlmostEqual(implicito, explicito, places=9)
+
+    def test_combustible_grueso_humedo_frena_el_bosque(self):
+        seco = R.velocidad_base(R.FUEL_MODEL_DENSO, self.c, (self.emc, self.emc, self.emc)).r0_m_min
+        humedo = R.velocidad_base(R.FUEL_MODEL_DENSO, self.c, (self.emc, 20.0, 20.0)).r0_m_min
+        self.assertLess(humedo, seco)
+
+    def test_el_pasto_solo_depende_de_la_clase_1h(self):
+        a = R.velocidad_base(R.FUEL_MODEL_LIGERO, self.c, (self.emc, self.emc, self.emc)).r0_m_min
+        b = R.velocidad_base(R.FUEL_MODEL_LIGERO, self.c, (self.emc, 30.0, 30.0)).r0_m_min
+        self.assertAlmostEqual(a, b, places=9)
+
+    def test_combustible_vivo_mas_seco_propaga_mas_rapido(self):
+        normal = R.velocidad_base(R.FUEL_MODEL_DENSO, self.c).r0_m_min
+        seco = R.velocidad_base(R.FUEL_MODEL_DENSO, dict(self.c, humedad_combustible_vivo=60.0)).r0_m_min
+        self.assertGreater(seco, normal)
+
+
 if __name__ == "__main__":
     unittest.main()
