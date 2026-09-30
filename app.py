@@ -173,7 +173,9 @@ if ejecutar:
         )
         fila_origen, col_origen = entorno["celda_origen"]
         grid_inicial_reportes = sim.grid.copy()
-        sim.iniciar_incendio(fila_origen, col_origen)
+        # OJO: todavía NO se enciende el fuego aquí -- primero hace falta
+        # el clima de partida para saber si la combustión es siquiera
+        # sostenible en ese punto (ver más abajo, `sim.puede_arder`).
 
         metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=MINUTOS_POR_PASO)
 
@@ -229,7 +231,8 @@ if ejecutar:
             with map_spot:
                 components.html(m._repr_html_(), height=380)
 
-        # Vista inicial (origen ya encendido) mientras se resuelve el clima.
+        # Vista inicial del terreno (sin fuego todavía) mientras se
+        # resuelve el clima.
         _render_grid()
         _render_mapa()
 
@@ -267,37 +270,69 @@ if ejecutar:
             f"Pendiente {'activada' if entorno['elevacion'] is not None else 'desactivada'}."
         )
 
-        # --- 4. Bucle de simulación ---
-        for paso in range(1, pasos_totales_input + 1):
-            status_bar.progress(int((paso / pasos_totales_input) * 100), text=f"Paso {paso}/{pasos_totales_input}")
-
-            clima_paso = clima_en_paso(serie_clima, paso, MINUTOS_POR_PASO)
-            sim.simular_paso(clima_paso, multiplicador_riesgo=multiplicador_escenario)
-            rep = metricas.generar_reporte(grid_inicial_reportes, sim.grid, paso)
-
-            m1_holder.metric("Tiempo Simulado", f"{rep['tiempo_minutos']} min")
-            m2_holder.metric("Focos Activos", f"{rep['celdas_activas']}")
-            m3_holder.metric("Edificios Afectados", f"{rep['edificios_afectados']} / {rep['edificios_totales']}")
-            m4_holder.metric(
-                "Área Afectada", f"{rep['area_m2']:,.0f} m²",
-                delta=f"{rep['area_hectareas']:.2f} ha", delta_color="off",
-            )
-            m5_holder.metric("Vel. Propagación", f"{rep['velocidad_m_min']:.1f} m/min")
-
+        # --- 4. ¿Se puede siquiera encender el fuego con este clima? ---
+        # Rothermel calcula velocidad = 0 cuando la humedad del combustible
+        # supera su humedad de extinción (12% pasto / 25% bosque): ahí no
+        # hay combustión posible, así que forzar la ignición igual solo
+        # produciría un "quemado" fantasma de 1 celda (100 m² con la
+        # resolución por defecto) sin que el modelo respalde que eso
+        # realmente pasaría.
+        if not sim.puede_arder(fila_origen, col_origen, clima_inicial):
+            rep_sin_fuego = metricas.generar_reporte(grid_inicial_reportes, sim.grid, 0)
+            m1_holder.metric("Tiempo Simulado", "0 min")
+            m2_holder.metric("Focos Activos", "0")
+            m3_holder.metric("Edificios Afectados", f"0 / {rep_sin_fuego['edificios_totales']}")
+            m4_holder.metric("Área Afectada", "0 m²", delta="0.00 ha", delta_color="off")
+            m5_holder.metric("Vel. Propagación", "0.0 m/min")
             _render_grid()
             _render_mapa()
+            status_bar.warning("🧯 No se pudo sostener combustión")
+            st.warning(
+                "🧯 **Con el clima de partida, el combustible en el punto de origen está "
+                "demasiado húmedo para sostener un incendio.** Rothermel calcula una "
+                "humedad de extinción del 12% para pasto y 25% para bosque; con la "
+                "temperatura/humedad relativa dadas, la humedad de equilibrio del "
+                "combustible ya la supera, así que la velocidad de propagación es 0 "
+                "incluso justo en el punto de ignición (como pasarle un fósforo a pasto "
+                "empapado: no prende, no se apaga solo). Subir el **factor de escenario** "
+                "no cambia esto: es un umbral físico del modelo, no una escala continua. "
+                "Probá con clima más seco/cálido, o fijalo vos mismo en modo "
+                "**condiciones controladas**."
+            )
+        else:
+            sim.iniciar_incendio(fila_origen, col_origen)
 
-            time.sleep(velocidad_input)
+            # --- 5. Bucle de simulación ---
+            for paso in range(1, pasos_totales_input + 1):
+                status_bar.progress(int((paso / pasos_totales_input) * 100), text=f"Paso {paso}/{pasos_totales_input}")
 
-        status_bar.success("✅ Simulación finalizada exitosamente.")
+                clima_paso = clima_en_paso(serie_clima, paso, MINUTOS_POR_PASO)
+                sim.simular_paso(clima_paso, multiplicador_riesgo=multiplicador_escenario)
+                rep = metricas.generar_reporte(grid_inicial_reportes, sim.grid, paso)
 
-        rep_final = metricas.generar_reporte(grid_inicial_reportes, sim.grid, pasos_totales_input)
-        st.markdown(
-            f"**Resumen final:** {rep_final['edificios_afectados']} de {rep_final['edificios_totales']} "
-            f"edificios detectados en el área fueron afectados · {rep_final['area_m2']:,.0f} m² "
-            f"({rep_final['area_hectareas']:.2f} ha) quemadas o en llamas · velocidad media de avance "
-            f"{rep_final['velocidad_m_min']:.1f} m/min."
-        )
+                m1_holder.metric("Tiempo Simulado", f"{rep['tiempo_minutos']} min")
+                m2_holder.metric("Focos Activos", f"{rep['celdas_activas']}")
+                m3_holder.metric("Edificios Afectados", f"{rep['edificios_afectados']} / {rep['edificios_totales']}")
+                m4_holder.metric(
+                    "Área Afectada", f"{rep['area_m2']:,.0f} m²",
+                    delta=f"{rep['area_hectareas']:.2f} ha", delta_color="off",
+                )
+                m5_holder.metric("Vel. Propagación", f"{rep['velocidad_m_min']:.1f} m/min")
+
+                _render_grid()
+                _render_mapa()
+
+                time.sleep(velocidad_input)
+
+            status_bar.success("✅ Simulación finalizada exitosamente.")
+
+            rep_final = metricas.generar_reporte(grid_inicial_reportes, sim.grid, pasos_totales_input)
+            st.markdown(
+                f"**Resumen final:** {rep_final['edificios_afectados']} de {rep_final['edificios_totales']} "
+                f"edificios detectados en el área fueron afectados · {rep_final['area_m2']:,.0f} m² "
+                f"({rep_final['area_hectareas']:.2f} ha) quemadas o en llamas · velocidad media de avance "
+                f"{rep_final['velocidad_m_min']:.1f} m/min."
+            )
 
     except ValueError as e_val:
         status_bar.empty()

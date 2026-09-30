@@ -144,6 +144,18 @@ sale de Rothermel (tiempo de residencia de llama, Anderson 1969,
 `tr = 384/σ`), salvo lo urbano, que usa una duración heurística fija
 más larga (incendio estructural).
 
+**¿Y si el clima no da para que arda ni el punto de origen?** Antes de
+encender el fuego, `SimuladorIncendio.puede_arder` verifica que
+Rothermel realmente calcule una velocidad mayor que 0 ahí — es decir,
+que la humedad del combustible (derivada de temperatura/humedad
+relativa vía EMC) no supere su humedad de extinción (12% pasto, 25%
+bosque). Si la supera, no se fuerza la ignición: el modelo dice, con
+razón, que no hay combustión física posible (como intentar prender un
+fósforo en pasto empapado), y la app lo explica en vez de reportar un
+"incendio" fantasma de una sola celda. El **factor de escenario** no
+puede saltarse este umbral: multiplica la velocidad ya calculada, y
+cualquier número multiplicado por 0 sigue siendo 0.
+
 ### 6. Métricas y daño a estructuras (`metricas_fuego.py`)
 El daño urbano ya no se mide solo en "% de celdas quemadas": las
 celdas urbanas contiguas se agrupan como **edificios individuales**

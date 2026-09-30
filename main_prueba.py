@@ -41,20 +41,30 @@ sim = SimuladorIncendio(
 )
 fila_origen, col_origen = entorno["celda_origen"]
 grid_inicial = sim.grid.copy()
-sim.iniciar_incendio(fila_origen, col_origen)
 
 metricas = CalculadorMetricas(tam_celda_m=TAM_CELDA_M, minutos_por_paso=15)
 
-print("\n--- INICIANDO SIMULACIÓN: incendio iniciando justo en tu ubicación ---")
-for paso in range(1, PASOS + 1):
-    clima_paso = clima_en_paso(serie_clima, paso)
-    sim.simular_paso(clima_paso, multiplicador_riesgo=FACTOR_ESCENARIO)
-    reporte = metricas.generar_reporte(grid_inicial, sim.grid, paso)
+clima_inicial = clima_en_paso(serie_clima, 1)
+if not sim.puede_arder(fila_origen, col_origen, clima_inicial):
+    print(
+        "\n--- No se pudo sostener combustión: con el clima de partida, el "
+        "combustible en el punto de origen está por encima de su humedad de "
+        "extinción de Rothermel (12% pasto / 25% bosque). No hay incendio "
+        "que simular. ---"
+    )
+else:
+    sim.iniciar_incendio(fila_origen, col_origen)
 
-    print(f"\n[Paso {paso} - {reporte['tiempo_minutos']} min]")
-    print(f" - Área afectada: {reporte['area_m2']} m² ({reporte['area_hectareas']} ha)")
-    print(f" - Focos activos en llamas: {reporte['celdas_activas']}")
-    print(f" - Edificios afectados: {reporte['edificios_afectados']} / {reporte['edificios_totales']}")
-    print(f" - Velocidad de avance estimada: {reporte['velocidad_m_min']} m/min")
+    print("\n--- INICIANDO SIMULACIÓN: incendio iniciando justo en tu ubicación ---")
+    for paso in range(1, PASOS + 1):
+        clima_paso = clima_en_paso(serie_clima, paso)
+        sim.simular_paso(clima_paso, multiplicador_riesgo=FACTOR_ESCENARIO)
+        reporte = metricas.generar_reporte(grid_inicial, sim.grid, paso)
+
+        print(f"\n[Paso {paso} - {reporte['tiempo_minutos']} min]")
+        print(f" - Área afectada: {reporte['area_m2']} m² ({reporte['area_hectareas']} ha)")
+        print(f" - Focos activos en llamas: {reporte['celdas_activas']}")
+        print(f" - Edificios afectados: {reporte['edificios_afectados']} / {reporte['edificios_totales']}")
+        print(f" - Velocidad de avance estimada: {reporte['velocidad_m_min']} m/min")
 
 print("\n--- FIN DE LA SIMULACIÓN ---")

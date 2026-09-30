@@ -116,9 +116,38 @@ class SimuladorIncendio:
 
         self.paso_actual = 0
 
+    def puede_arder(self, fila: int, col: int, clima: dict) -> bool:
+        """
+        ¿La celda (fila, col) puede sostener combustión bajo este clima?
+
+        Falso si la celda no es un estado combustible (agua, vía), si
+        está lloviendo, o -- el caso que importa aquí -- si la humedad
+        del combustible ya supera la humedad de extinción del modelo de
+        Rothermel para ese tipo de vegetación (12% para pasto, 25% para
+        bosque): en ese punto Rothermel calcula R = 0 en cualquier
+        dirección, así que por más que se intente encender, el fuego no
+        se sostiene (como pasarle un fósforo a pasto empapado). Lo
+        urbano usa el mismo criterio que la vegetación ligera, ya que su
+        velocidad es una fracción de esa (ver `_FACTOR_EXPOSICION_URBANA`).
+        """
+        if not (0 <= fila < self.filas and 0 <= col < self.cols):
+            raise ValueError("Las coordenadas están fuera de la grilla.")
+
+        estado = self.grid[fila, col]
+        if estado not in ESTADOS_COMBUSTIBLES:
+            return False
+        if clima.get("precipitacion", 0.0) > 0.0:
+            return False
+
+        modelo = rothermel.FUEL_MODEL_DENSO if estado == ESTADO_VEGETACION_DENSA else rothermel.FUEL_MODEL_LIGERO
+        return rothermel.velocidad_base(modelo, clima).r0_m_min > 0.0
+
     def iniciar_incendio(self, fila: int, col: int):
         """Enciende la celda de origen del incendio (la coordenada exacta
-        que ingresó el usuario, asumiendo que ahí empieza el fuego)."""
+        que ingresó el usuario, asumiendo que ahí empieza el fuego).
+
+        No verifica por sí solo si la combustión es sostenible -- eso es
+        `puede_arder`; este método solo ejecuta la ignición mecánica."""
         if not (0 <= fila < self.filas and 0 <= col < self.cols):
             raise ValueError("Las coordenadas iniciales están fuera de la grilla.")
         estado_previo = self.grid[fila, col]

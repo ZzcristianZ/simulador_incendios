@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [".claude/hooks/block_sensitive_paths.js"],
+            "timeout": 10,
+            "statusMessage": "Comprobando ruta contra la lista de bloqueo..."
+          }
+        ]
+      }
+    ]
+  }
+}
