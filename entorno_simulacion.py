@@ -23,6 +23,7 @@ from ingesta_geografica import (
     generar_terreno_sintetico,
     GeografiaNoDisponibleError,
 )
+from simulador_automata import ESTADO_VEGETACION_DENSA
 
 
 def ajustar_elevacion_a_grilla(elevacion_gruesa: np.ndarray, filas: int, columnas: int) -> np.ndarray:
@@ -116,6 +117,30 @@ def clima_en_paso(serie_climatica: list, paso: int, minutos_por_paso: int = 15) 
     (paso 1-indexado, cada paso dura `minutos_por_paso` minutos)."""
     idx = min(len(serie_climatica) - 1, ((paso - 1) * minutos_por_paso) // 60)
     return serie_climatica[idx]
+
+
+def terreno_controlado(filas: int, columnas: int, tam_celda_m: float, pendiente_pct: float = 0.0,
+                       azimut_subida: float = 90.0, estado: int = ESTADO_VEGETACION_DENSA) -> dict:
+    """
+    Terreno sintético homogéneo para experimentos de sensibilidad: un solo
+    tipo de combustible sobre un plano que sube `pendiente_pct` % hacia
+    `azimut_subida` (0 = norte, 90 = este). Devuelve el mismo dict que
+    `preparar_terreno`, así que el resto del pipeline no distingue.
+    """
+    grid = np.full((filas, columnas), estado, dtype=int)
+    fila_i, col_i = np.mgrid[0:filas, 0:columnas]
+    este_m, norte_m = col_i * tam_celda_m, -fila_i * tam_celda_m
+    az = np.radians(azimut_subida)
+    elevacion = pendiente_pct / 100.0 * (este_m * np.sin(az) + norte_m * np.cos(az))
+    return {
+        "filas": filas,
+        "columnas": columnas,
+        "grid": grid,
+        "celda_origen": (filas // 2, columnas // 2),
+        "elevacion": elevacion if pendiente_pct else None,
+        "datos_geo": None,
+        "geografia_real": False,
+    }
 
 
 def construir_clima_manual(valores: dict):
