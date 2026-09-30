@@ -173,13 +173,17 @@ def rasterizar_geografia(datos_geo: dict, lat_centro: float, lon_centro: float,
         _rasterizar_poligono(mascara_agua, puntos, filas, columnas)
     grid[mascara_agua] = ESTADO_AGUA
 
+    # Cada tramo de vía se muestrea a lo largo (no solo en sus vértices):
+    # una vía con huecos no funciona como cortafuego.
     mascara_vias = np.zeros((filas, columnas), dtype=bool)
     for via in datos_geo.get("vias", []):
         puntos = [latlon_a_celda(p_lat, p_lon) for p_lat, p_lon in via]
-        for (fila, col) in puntos:
-            fi, ci = int(round(fila)), int(round(col))
-            if 0 <= fi < filas and 0 <= ci < columnas:
-                mascara_vias[fi, ci] = True
+        for (f0, c0), (f1, c1) in zip(puntos, puntos[1:]):
+            n = int(np.ceil(2 * max(abs(f1 - f0), abs(c1 - c0)))) + 1  # cada media celda
+            for fila, col in zip(np.linspace(f0, f1, n), np.linspace(c0, c1, n)):
+                fi, ci = int(round(fila)), int(round(col))
+                if 0 <= fi < filas and 0 <= ci < columnas:
+                    mascara_vias[fi, ci] = True
     grid[mascara_vias] = ESTADO_SIN_COMBUSTIBLE
 
     mascara_edificios = np.zeros((filas, columnas), dtype=bool)
