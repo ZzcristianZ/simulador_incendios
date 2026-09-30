@@ -1,7 +1,7 @@
 # Simulador de Incendios Forestales
 
 Simulación de la propagación de un incendio forestal mediante un
-**autómata celular estocástico**, parametrizado con **datos ambientales
+**frente de fuego sobre una grilla (método de conjuntos de nivel)**, parametrizado con **datos ambientales
 reales** (clima, terreno y edificaciones) de una ubicación geográfica
 dada — por ejemplo, tu propia casa.
 
@@ -11,7 +11,7 @@ dada — por ejemplo, tu propia casa.
 > discreto: cada paso de simulación representa **15 minutos simulados**
 > del incendio, independientemente de cuántos milisegundos tarde en
 > dibujarse en pantalla. El término técnico correcto es **simulación de
-> un sistema dinámico discreto (autómata celular estocástico)**.
+> un sistema dinámico discreto (frente por conjuntos de nivel sobre una grilla)**.
 
 ## ¿Qué responde este proyecto?
 
@@ -30,7 +30,7 @@ ingesta_geografica.py    Edificios, agua, bosque y vías reales (OpenStreetMap/O
 entorno_simulacion.py    Junta geografía + elevación + clima (real o manual) en la grilla de simulación
 modelo_probabilidad.py   Índice Fosberg (FFWI) e insumo de humedad de combustible, informativos
 modelo_rothermel.py      Física de propagación real: Rothermel (1972) + elipse de viento (Anderson 1983)
-simulador_automata.py    Autómata celular vectorizado (numpy): combustible, pendiente, fuego
+simulador_automata.py    Frente de fuego por conjuntos de nivel (numpy): combustible, pendiente, viento
 metricas_fuego.py        Área (m² y ha), velocidad de avance, daño a EDIFICIOS individuales
 app.py                   Interfaz Streamlit (modo tiempo real y modo condiciones controladas)
 main_prueba.py           Demo por consola, sin interfaz gráfica
@@ -108,12 +108,12 @@ avance real en **metros/minuto**, no una probabilidad inventada.
   2015, *Fire Technology* 51(3)) y se validó numéricamente contra las
   velocidades de referencia publicadas para ambos modelos de
   combustible.
-- **Forma elíptica por viento:** la razón largo/ancho del incendio en
-  función de la velocidad de viento a altura de llama media — Anderson,
-  H.E. (1983), *Predicting Wind-Driven Wild Land Fire Size and Shape*,
-  USDA RP-INT-305 — redistribuye esa velocidad entre las 8 direcciones,
-  de forma que el frente avanza mucho más rápido a favor del viento que
-  en contra o de flanco (en vez del viejo factor exponencial ad-hoc).
+- **Viento y pendiente combinados como vectores (Finney 1998):** el
+  coeficiente de viento de Rothermel apunta hacia donde sopla el viento y
+  el de pendiente cuesta arriba; su resultante da la velocidad de cabeza y
+  su dirección. La forma del incendio (razón largo/ancho de Anderson, 1983)
+  sale del *viento efectivo*, el viento que por sí solo produciría ese
+  mismo efecto. Cuesta abajo el fuego retrocede más lento que en llano.
 - **Humedad de combustible:** la humedad de los combustibles muertos se
   deriva del contenido de humedad de equilibrio (EMC) a partir de
   temperatura y humedad relativa — la misma fórmula que ya usaba el
@@ -128,21 +128,29 @@ avance real en **metros/minuto**, no una probabilidad inventada.
   pavesas de celdas vecinas en llamas, no combustión de materiales de
   construcción.
 
-### 5. Autómata celular (`simulador_automata.py`)
-Vectorizado con numpy: como el clima es uniforme sobre toda el área en
-un instante dado, la física de Rothermel de cada tipo de combustible se
-calcula **una sola vez por paso** (no una vez por celda), y el
-resultado (m/min) se combina con arrays de pendiente real y tipo de
-combustible por dirección. La velocidad se convierte en probabilidad de
-ignición del paso como la fracción de una celda que el frente
-alcanzaría a recorrer en 15 minutos (`R · 15 / tamaño_celda`, acotada a
-[0, 1]), y esa probabilidad decide con una tirada aleatoria si cada
-celda vecina se enciende — el carácter estocástico del autómata se
-mantiene igual que antes, solo cambia de dónde sale la probabilidad. El
-tiempo que cada celda permanece en llamas antes de consumirse también
-sale de Rothermel (tiempo de residencia de llama, Anderson 1969,
-`tr = 384/σ`), salvo lo urbano, que usa una duración heurística fija
-más larga (incendio estructural).
+### 5. Propagación del frente: conjuntos de nivel (`simulador_automata.py`)
+El frente de fuego es el contorno cero de una función φ sobre la grilla
+(φ ≤ 0 = quemado) y avanza en su dirección normal a la velocidad que dicta
+la elipse de cada celda: la *función soporte* de la elipse de Rothermel +
+Anderson con viento y pendiente vectoriales. Un incendio puntual crece así
+exactamente como la elipse, sin el sesgo de los métodos de vecinos fijos
+(un autómata de 8 vecinos pierde ~30% del área con viento moderado y hasta
+~80% con viento fuerte, porque solo puede avanzar en 8 direcciones).
+
+- Esquema upwind de primer orden (Osher y Sethian, 1988) con paso de tiempo
+  adaptativo (el frente avanza como mucho media celda por subpaso).
+- φ se reinicializa como distancia con signo en cada subpaso (Sussman,
+  Smereka y Osher, 1994; corrección de subcelda de Russo y Smereka, 2000).
+- Cada celda registra el minuto de llegada del frente: de ahí salen el área
+  y la velocidad de cabeza en cada instante.
+- Agua y vías (velocidad 0) funcionan como cortafuegos.
+- La humedad del combustible muerto responde al clima con su tiempo de
+  respuesta (clases 1h/10h/100h), no al instante.
+- Heterogeneidad opcional (factor aleatorio fijo por celda, con semilla)
+  para estudios con réplicas; por defecto el modelo es determinista.
+- Verificación contra la elipse analítica: círculo −0.8% de área; LWR 1.8
+  −2.1%; LWR 3.5 +4.7%; velocidad de cabeza con error ≤ 2%. Rango validado:
+  LWR ≤ 4; por encima la app avisa.
 
 **¿Y si el clima no da para que arda ni el punto de origen?** Antes de
 encender el fuego, `SimuladorIncendio.puede_arder` verifica que
@@ -188,15 +196,13 @@ elevación) — todos servicios públicos y gratuitos, sin llave de API.
 
 ## Limitaciones conocidas (para tu informe)
 
-- El motor de propagación (Rothermel 1972 + elipse de Anderson 1983) es
-  el mismo usado por BehavePlus/FARSITE, pero aquí corre sobre una
-  grilla raster de 8 vecinos con pasos discretos de 15 min, no sobre un
-  solver de perímetro vectorial completo (no reemplaza a FARSITE/FlamMap
-  en sí mismos). Con vegetación muy ligera y viento fuerte, la velocidad
-  real puede superar lo que una celda/paso puede resolver, y el frente
-  se ve "saturado" (avanza el máximo posible en casi todas las
-  direcciones) — un límite de resolución espaciotemporal, no del modelo
-  físico en sí.
+- El frente usa un esquema de conjuntos de nivel de primer orden: con
+  elipses muy alargadas (LWR > 4, pasto con viento fuerte) sobreestima el
+  área de los flancos (+35% con LWR 8). La app lo avisa; la mejora es un
+  esquema de Godunov anisotrópico.
+- La temperatura solo actúa a través de la humedad del combustible (EMC),
+  así que su efecto directo es pequeño; no se modela el precalentamiento.
+- La lluvia pausa el avance pero no moja el combustible.
 - Solo hay 2 modelos de combustible silvestre (pasto y bosque), porque
   la clasificación de vegetación de este proyecto viene únicamente de
   OpenStreetMap (sin una fuente global de cobertura de suelo): fuera de
@@ -204,9 +210,6 @@ elevación) — todos servicios públicos y gratuitos, sin llave de API.
 - La humedad de los combustibles vivos (solo relevante para el bosque)
   no tiene fuente climática en tiempo real; usa una constante estacional
   documentada en `modelo_rothermel.py`, no un dato medido.
-- Viento y pendiente se combinan de forma aditiva (como en la fórmula
-  original de Rothermel), no como dos elipses combinadas
-  vectorialmente (nivel de detalle que sí tiene FARSITE).
 - Lo urbano no tiene un modelo de combustión propio: es una heurística
   de exposición estructural, documentada como tal.
 - Overpass API es un servicio público con límites de uso; en horas pico
@@ -239,6 +242,17 @@ elevación) — todos servicios públicos y gratuitos, sin llave de API.
   Weather Index* (índice Fosberg, informativo).
 - Alexandridis, A. et al. (2008). "A cellular automata model for forest
   fire spread prediction" (enfoque general de autómata celular).
+- Finney, M.A. (1998). *FARSITE: Fire Area Simulator—Model Development
+  and Evaluation*. USDA Forest Service, RMRS-RP-4 (combinación vectorial de
+  viento y pendiente).
+- Osher, S. & Sethian, J.A. (1988). Fronts propagating with
+  curvature-dependent speed: algorithms based on Hamilton-Jacobi
+  formulations. *Journal of Computational Physics*, 79(1), 12–49.
+- Sussman, M., Smereka, P. & Osher, S. (1994). A level set approach for
+  computing solutions to incompressible two-phase flow. *Journal of
+  Computational Physics*, 114(1), 146–159.
+- Russo, G. & Smereka, P. (2000). A remark on computing distance
+  functions. *Journal of Computational Physics*, 163(1), 51–67.
 
 ## Posibles extensiones futuras
 
@@ -246,9 +260,7 @@ elevación) — todos servicios públicos y gratuitos, sin llave de API.
 - Clasificación de vegetación con una fuente global de cobertura de
   suelo (ej. ESA WorldCover), en vez de depender solo de las etiquetas
   de OpenStreetMap.
-- Combinar viento y pendiente como elipses vectorialmente combinadas
-  (nivel FARSITE), en vez de sumarlas como en la fórmula original de
-  Rothermel.
+- Esquema de Godunov anisotrópico para elipses muy alargadas (LWR > 4).
 - Validación contra el perímetro real de un incendio histórico conocido.
 - Exportar el reporte final a PDF para el informe de la materia.
 - Tiempo de evacuación estimado por vía (usando las vías ya extraídas

@@ -26,9 +26,9 @@ st.markdown("""
 
 st.title("🔥 Plataforma de Simulación y Análisis de Incendios Forestales")
 st.caption(
-    "Autómata celular estocástico alimentado con clima, edificios, agua y "
-    "vegetación reales del lugar que ingreses. No es una simulación en "
-    "tiempo real: cada paso representa 15 minutos de avance del fuego."
+    "Frente de fuego de Rothermel sobre una grilla (conjuntos de nivel), con "
+    "clima, edificios, agua y vegetación reales del lugar que ingreses. Cada "
+    "paso representa 15 minutos de avance del fuego."
 )
 
 # 3. Panel Lateral Dinámico
@@ -67,6 +67,9 @@ with st.sidebar:
             "radiacion_solar": cm1.number_input("Radiación solar (W/m²):", value=200.0, min_value=0.0, step=50.0),
             "humedad_suelo": cm2.number_input("Humedad de suelo (m³/m³):", value=0.30, min_value=0.0, max_value=1.0, step=0.05),
             "vpd": cm1.number_input("Déficit de presión de vapor (kPa):", value=1.2, min_value=0.0, step=0.1),
+            "humedad_combustible_vivo": cm2.number_input(
+                "Humedad combustible vivo (%):", value=100.0, min_value=30.0, max_value=250.0, step=10.0,
+                help="Solo afecta al bosque. 100% es un valor estacional típico; más bajo = vegetación más seca."),
         }
     else:
         usar_clima_evolutivo = st.checkbox("Clima evolutivo por hora (pronóstico real)", value=True,
@@ -133,7 +136,7 @@ if ejecutar:
         m4_holder, m5_holder = m4.empty(), m5.empty()
         for holder, etiqueta in zip(
             [m1_holder, m2_holder, m3_holder, m4_holder, m5_holder],
-            ["Tiempo Simulado", "Focos Activos", "Edificios Afectados", "Área Afectada", "Vel. Propagación"],
+            ["Tiempo Simulado", "Focos Activos", "Edificios Afectados", "Área Afectada", "Vel. de cabeza"],
         ):
             holder.metric(etiqueta, "…")
 
@@ -284,7 +287,7 @@ if ejecutar:
             m2_holder.metric("Focos Activos", "0")
             m3_holder.metric("Edificios Afectados", f"0 / {rep_sin_fuego['edificios_totales']}")
             m4_holder.metric("Área Afectada", "0 m²", delta="0.00 ha", delta_color="off")
-            m5_holder.metric("Vel. Propagación", "0.0 m/min")
+            m5_holder.metric("Vel. de cabeza", "0.0 m/min")
             _render_grid()
             _render_mapa()
             status_bar.warning("🧯 No se pudo sostener combustión")
@@ -318,7 +321,7 @@ if ejecutar:
                     "Área Afectada", f"{rep['area_m2']:,.0f} m²",
                     delta=f"{rep['area_hectareas']:.2f} ha", delta_color="off",
                 )
-                m5_holder.metric("Vel. Propagación", f"{rep['velocidad_m_min']:.1f} m/min")
+                m5_holder.metric("Vel. de cabeza", f"{rep['velocidad_m_min']:.1f} m/min")
 
                 _render_grid()
                 _render_mapa()
@@ -331,9 +334,20 @@ if ejecutar:
             st.markdown(
                 f"**Resumen final:** {rep_final['edificios_afectados']} de {rep_final['edificios_totales']} "
                 f"edificios detectados en el área fueron afectados · {rep_final['area_m2']:,.0f} m² "
-                f"({rep_final['area_hectareas']:.2f} ha) quemadas o en llamas · velocidad media de avance "
+                f"({rep_final['area_hectareas']:.2f} ha) quemadas o en llamas · velocidad de cabeza "
                 f"{rep_final['velocidad_m_min']:.1f} m/min."
             )
+
+            if sim.lwr_max > 4.0:
+                st.info(
+                    f"ℹ️ Con este viento la elipse del incendio es muy alargada (LWR {sim.lwr_max:.1f} > 4): "
+                    "el área de los flancos puede estar sobreestimada. Rango validado del modelo: LWR ≤ 4."
+                )
+            if np.isfinite(sim.llegada[[0, -1], :]).any() or np.isfinite(sim.llegada[:, [0, -1]]).any():
+                st.warning(
+                    "⚠️ El incendio alcanzó el borde del área simulada: desde ahí el área real sería mayor. "
+                    "Aumenta el radio para verlo completo."
+                )
 
     except ValueError as e_val:
         status_bar.empty()

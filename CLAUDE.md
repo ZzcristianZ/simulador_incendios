@@ -42,6 +42,10 @@ Open-Meteo), sin llaves ni credenciales que gestionar.
   (modelos de combustible, coeficientes de Rothermel) van siempre citadas con
   su fuente académica — ver `modelo_rothermel.py` y la sección "Referencias
   del motor de propagación" en README.md.
+- `simulador_automata.py` es un frente de conjuntos de nivel: el estado es
+  `llegada` (minuto de llegada por celda) y `grid` se deriva de ahí. La
+  física por celda sale de `modelo_rothermel.elipse_efectiva`. Rango
+  validado: LWR ≤ 4.
 
 ## Reglas
 
