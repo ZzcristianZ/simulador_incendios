@@ -13,13 +13,14 @@ textColor = "#E8E6E3"
 # para que sea lo único que llama la atención en el panel.
 primaryColor = "#5FD4D0"
 linkColor = "#5FD4D0"
-borderColor = "#2E3644"
-showWidgetBorder = false
+borderColor = "#707989"
+showWidgetBorder = true
 showSidebarBorder = false
 baseRadius = "10px"
 buttonRadius = "16px"
-# Texto de avisos: los valores por defecto de Streamlit para info (azul) y
-# error (rojo) quedan en ~4.1:1 sobre su propio tinte; estos pasan AA (>=5.3:1).
+# Texto de avisos: los valores por defecto de Streamlit para info (azul,
+# 4.07:1) y error (rojo, 4.33:1) quedan bajo AA sobre su propio tinte;
+# estos pasan AA (>=5.3:1).
 blueTextColor = "#8CC4FA"
 redTextColor = "#FF9A9A"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"

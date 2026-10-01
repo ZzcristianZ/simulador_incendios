@@ -23,8 +23,10 @@ st.set_page_config(page_title="Simulador de Incendios", layout="wide", initial_s
 # Acentos: ember (#FF6B35) solo en el botón de inicio = fuego/acción; teal
 # (#5FD4D0) en lecturas y controles = instrumentación. Contraste verificado
 # (WCAG): texto #E8E6E3 12.99:1 sobre fondo / 11.71:1 sobre superficie;
-# atenuado #8B93A1 5.23:1 / 4.71:1; teal 9.11:1; texto del botón #1A0F0A
-# 6.63:1 sobre ember. Fuera a propósito: fondo casi negro, un solo acento,
+# atenuado #8B93A1 5.23:1 / 4.71:1; teal 8.20:1 sobre superficie (donde se
+# usa: tiles de telemetría; 9.11:1 sería sobre el fondo base, no donde el
+# texto aparece); texto del botón #1A0F0A 6.63:1 sobre ember. Fuera a
+# propósito: fondo casi negro, un solo acento,
 # terracota, etiquetas en mayúsculas con tracking y una misma sombra gris
 # plana para todo (el kit genérico de "tarjetas SaaS").
 # Se inyecta en cada rerun con el mismo contenido y en la misma posición,
@@ -68,12 +70,14 @@ st.markdown("""
         margin-bottom: 0.6rem;
     }
 
-    /* Entradas: ranuras hundidas en el panel. El borde de Streamlit se anula
-       porque aquí la forma la da la sombra; el foco lo marca el anillo. */
+    /* Entradas: ranuras hundidas en el panel. El borde nativo de Streamlit
+       (showWidgetBorder/borderColor en config.toml) se conserva: en reposo
+       da un borde sutil de 1px que convive con la sombra, y de regalo trae
+       el borde nativo de foco/error (number_input) que antes quedaba
+       anulado. El foco además lo remarca el anillo de abajo. */
     [data-testid="stTextInputRootElement"],
     [data-testid="stNumberInputContainer"] {
         background: var(--panel-bg);
-        border-color: transparent !important;
         border-radius: 10px;
         box-shadow: var(--ranura);
     }
@@ -95,6 +99,11 @@ st.markdown("""
         background: var(--panel-bg);
         box-shadow: inset 0 0 0 1px var(--text-muted), inset 2px 2px 4px var(--shadow-dark);
     }
+    /* Casilla y radio marcados: el check/punto blanco por defecto queda en
+       1.78:1 contra el teal de fondo del control. Se repinta con --panel-bg
+       (oscuro) para subir el contraste a ~9.11:1. */
+    [data-testid="stCheckbox"] label[data-selected="true"] svg { stroke: var(--panel-bg); }
+    [data-testid="stRadioOption"][data-selected="true"] > span + div > div > div:first-child > div { background: var(--panel-bg); }
 
     /* Foco visible en todo control: anillo ember separado del borde. */
     .stApp :focus-visible { outline: var(--anillo) !important; outline-offset: 2px; }
@@ -129,6 +138,15 @@ st.markdown("""
         box-shadow: 7px 7px 16px var(--shadow-dark), -5px -5px 13px var(--shadow-light),
                     0 0 30px rgba(255, 143, 92, 0.42);
     }
+    /* Deshabilitado (p.ej. pérdida de conexión): debe distinguirse del botón
+       activo. Va después de :hover para ganar por orden de aparición a
+       especificidad igual. */
+    .stApp [data-testid="stBaseButton-primary"]:disabled {
+        background: var(--panel-surface);
+        color: var(--text-muted);
+        box-shadow: var(--ranura);
+        cursor: not-allowed;
+    }
     .stApp [data-testid="stBaseButton-primary"]:active {
         background: var(--ember);
         color: #1A0F0A;
@@ -159,7 +177,9 @@ st.markdown("""
         font-variant-numeric: tabular-nums;
         line-height: 1.2;
     }
-    [data-testid="stMetricDelta"], [data-testid="stMetricDelta"] p { color: var(--text-muted); }
+    /* Delta del área afectada: se deja el color nativo de Streamlit para el
+       delta (sin override) -- un gris propio aquí quedaba en 3.61:1 contra
+       el fondo del tile, bajo el mínimo AA de 4.5:1. */
 
     /* Pantallas (grilla y mapa): marco extruido con la imagen dentro. */
     [data-testid="stElementContainer"]:has(> [data-testid="stFullScreenFrame"] [data-testid="stImage"]),
@@ -364,7 +384,7 @@ if ejecutar:
 
         def _render_grid():
             fig, ax = plt.subplots(figsize=(4.5, 4.5))
-            fig.patch.set_facecolor('#0E1117')
+            fig.patch.set_facecolor('#1C2128')  # --panel-bg: mismo sistema visual que el resto del panel, no un negro aparte.
             ax.imshow(sim.grid, cmap=cmap, vmin=0, vmax=6)
             ax.axis('off')
             plot_spot.pyplot(fig)
